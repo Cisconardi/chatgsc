@@ -1,0 +1,5 @@
+streamlit
+google-cloud-aiplatform>=1.38.0  # Specifica una versione recente per Gemini
+google-cloud-bigquery>=3.0.0
+pandas>=1.0.0
+google-auth>=2.0.0 # Spesso una dipendenza implicita, ma meglio esplicitarla
