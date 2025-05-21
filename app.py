@@ -9,6 +9,9 @@ import tempfile
 import json
 import atexit
 
+# --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
+st.set_page_config(layout="wide", page_title="Conversa con GSC via BigQuery")
+
 # --- Inizio Setup Credenziali GCP (MODIFICATO PER SECRETS INDIVIDUALI) ---
 # Percorso per il file temporaneo delle credenziali
 _temp_gcp_creds_file_path = None
@@ -272,18 +275,8 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
         return "Errore nella generazione del riassunto."
 
 
-# --- Interfaccia Streamlit (DA QUI IN POI IL CODICE RIMANE INVARIATO) ---
-st.set_page_config(layout="wide", page_title="Conversa con GSC via BigQuery")
-
-# Mostra lo stato delle credenziali nella sidebar all'inizio
-# Questo viene gestito dalla nuova logica di setup credenziali
-# if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") and _temp_gcp_creds_file_path:
-#     st.sidebar.success("Credenziali GCP caricate.") # Messaggio gestito sopra
-# elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-#    st.sidebar.success("Credenziali GCP caricate dall'ambiente.")
-# else:
-#    st.sidebar.error("Credenziali GCP non caricate. Controlla la configurazione.")
-
+# --- Interfaccia Streamlit ---
+# La chiamata a st.set_page_config() è stata spostata all'inizio dello script.
 
 st.title("💬 Conversa con i tuoi dati di Google Search Console")
 st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati in BigQuery. L'AI la tradurrà in SQL!")
@@ -291,10 +284,11 @@ st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati 
 with st.sidebar:
     st.header("⚙️ Configurazione")
     # Il messaggio sullo stato delle credenziali ora appare in cima alla sidebar
-    # grazie alla logica di setup modificata.
+    # grazie alla logica di setup modificata, se st.sidebar è già accessibile.
+    # La logica di visualizzazione dei messaggi di stato delle credenziali è già nel blocco try-except sopra.
     
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
-                                   value=st.secrets.get("project_id", "") if hasattr(st, 'secrets') else "", # Precompila se project_id è un secret
+                                   value=st.secrets.get("project_id", "") if hasattr(st, 'secrets') and "project_id" in st.secrets else "", # Precompila se project_id è un secret
                                    help="Il tuo ID progetto GCP dove risiedono i dati BigQuery e dove usare Vertex AI.")
     gcp_location = st.text_input("Location Vertex AI", "europe-west1", help="Es. us-central1, europe-west1. Deve supportare il modello scelto.")
     bq_dataset_id = st.text_input("ID Dataset BigQuery", help="Il dataset contenente le tabelle GSC.")
@@ -347,13 +341,15 @@ if gcp_project_id and bq_dataset_id and bq_table_names_str:
             st.session_state.table_schema_for_prompt = get_table_schema_for_prompt(gcp_project_id, bq_dataset_id, bq_table_names_str)
         st.session_state.current_schema_config_key = schema_config_key
         if st.session_state.table_schema_for_prompt:
-            st.sidebar.success("Schema tabelle caricato!")
-            with st.sidebar.expander("Vedi Schema Caricato per Prompt"):
-                st.code(st.session_state.table_schema_for_prompt, language='text')
+            if hasattr(st, 'sidebar'): # Assicura che st.sidebar sia disponibile
+                st.sidebar.success("Schema tabelle caricato!")
+                with st.sidebar.expander("Vedi Schema Caricato per Prompt"):
+                    st.code(st.session_state.table_schema_for_prompt, language='text')
         # else: # L'errore viene già mostrato da get_table_schema_for_prompt
             # st.sidebar.error("Errore nel caricamento dello schema. Controlla i log e la configurazione.")
 elif not (gcp_project_id and bq_dataset_id and bq_table_names_str) and any([gcp_project_id, bq_dataset_id, bq_table_names_str]): # Se alcuni ma non tutti i campi sono compilati
-     st.sidebar.warning("Completa ID Progetto, ID Dataset e Nomi Tabelle per caricare lo schema.")
+     if hasattr(st, 'sidebar'): # Assicura che st.sidebar sia disponibile
+        st.sidebar.warning("Completa ID Progetto, ID Dataset e Nomi Tabelle per caricare lo schema.")
 
 
 with st.form(key='query_form'):
@@ -398,7 +394,7 @@ if submit_button and user_question:
                     if enable_summary:
                         with st.spinner("L'AI sta generando un riassunto dei risultati..."):
                             st.session_state.results_summary = summarize_results_with_llm(
-                                gcp_project_id, gcp_location, summary_model_name if 'summary_model_name' in locals() else llm_model_name, # Usa summary_model se definito
+                                gcp_project_id, gcp_location, summary_model_name if 'summary_model_name' in locals() and summary_model_name else llm_model_name, 
                                 st.session_state.query_results, user_question
                             )
                         if st.session_state.results_summary:
