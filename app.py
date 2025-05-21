@@ -286,8 +286,8 @@ st.title("💬 Conversa con i tuoi dati di Google Search Console")
 st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati in BigQuery. L'AI la tradurrà in SQL!")
 
 expander_title_text = "ℹ️ Istruzioni per la Configurazione Iniziale"
-instructions_markdown_text = """
-Per utilizzare questa applicazione, assicurati di aver completato i seguenti passaggi:
+# Modifica qui: rimossa la newline iniziale e finale dalla stringa
+instructions_markdown_text = """Per utilizzare questa applicazione, assicurati di aver completato i seguenti passaggi:
 
 1.  **Esportazione Dati GSC in BigQuery:**
     * Configura l'esportazione dei dati di Google Search Console verso un dataset BigQuery nel tuo progetto Google Cloud.
@@ -318,8 +318,7 @@ Per utilizzare questa applicazione, assicurati di aver completato i seguenti pas
     * Inserisci l'**ID del Dataset BigQuery** dove hai esportato i dati GSC.
     * Fornisci i **Nomi delle Tabelle GSC** (separate da virgola) che vuoi interrogare (es. `searchdata_url_impression`, `searchdata_site_impression`).
 
-Una volta configurato tutto, potrai fare domande sui tuoi dati!
-"""
+Una volta configurato tutto, potrai fare domande sui tuoi dati!"""
 
 with st.expander(expander_title_text, expanded=False):
     st.markdown(instructions_markdown_text)
