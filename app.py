@@ -75,15 +75,22 @@ try:
                     if hasattr(st, 'sidebar') and st.sidebar:
                         st.sidebar.error(error_message)
                     raise ValueError(error_message) from json_err
-            elif isinstance(gcp_sa_json_value, dict): # AttrDict è una sottoclasse di dict
+            # Modifica qui per gestire correttamente AttrDict e altri dict-like
+            elif hasattr(gcp_sa_json_value, 'items') and callable(getattr(gcp_sa_json_value, 'items')):
                 # Se è un dizionario/AttrDict (es. da una tabella TOML), serializzalo in una stringa JSON
                 if hasattr(st, 'sidebar') and st.sidebar:
-                    st.sidebar.warning(f"Il secret GCP_SERVICE_ACCOUNT_JSON era un dizionario/AttrDict (tipo: {type(gcp_sa_json_value)}). Convertito in stringa JSON.")
-                gcp_sa_json_str = json.dumps(dict(gcp_sa_json_value)) # Converte AttrDict in dict, poi in stringa JSON
+                    st.sidebar.warning(f"Il secret GCP_SERVICE_ACCOUNT_JSON era un oggetto dict-like (tipo: {type(gcp_sa_json_value)}). Convertito in stringa JSON.")
+                try:
+                    gcp_sa_json_str = json.dumps(dict(gcp_sa_json_value)) # Converte AttrDict/dict-like in dict, poi in stringa JSON
+                except Exception as dump_err:
+                    error_message = f"Errore durante la conversione del secret GCP_SERVICE_ACCOUNT_JSON (tipo: {type(gcp_sa_json_value)}) in JSON: {dump_err}"
+                    if hasattr(st, 'sidebar') and st.sidebar:
+                        st.sidebar.error(error_message)
+                    raise ValueError(error_message) from dump_err
             else:
                 # Tipo inaspettato, prova a convertirlo in stringa e spera sia un JSON
                 if hasattr(st, 'sidebar') and st.sidebar:
-                    st.sidebar.warning(f"Il secret GCP_SERVICE_ACCOUNT_JSON non era né stringa né dizionario (tipo: {type(gcp_sa_json_value)}). Tentativo di conversione diretta a stringa e validazione JSON.")
+                    st.sidebar.warning(f"Il secret GCP_SERVICE_ACCOUNT_JSON non era né stringa né dict-like (tipo: {type(gcp_sa_json_value)}). Tentativo di conversione diretta a stringa e validazione JSON.")
                 gcp_sa_json_str = str(gcp_sa_json_value)
                 try:
                     json.loads(gcp_sa_json_str) # Valida
