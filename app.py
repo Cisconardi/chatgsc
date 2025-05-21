@@ -231,7 +231,6 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
         return None
 
     try:
-        # Aggiungi un log per vedere il modello e la location usati
         if hasattr(st, 'sidebar') and st.sidebar:
             st.sidebar.info(f"Vertex AI Init: project='{project_id}', location='{location}'. Model to use: '{model_name}'")
         
@@ -290,7 +289,7 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
         return sql_query
 
     except Exception as e:
-        st.error(f"Errore durante la chiamata a Vertex AI: {e}") # L'errore 404 apparirà qui
+        st.error(f"Errore durante la chiamata a Vertex AI: {e}") 
         if hasattr(st, 'sidebar') and st.sidebar:
              st.sidebar.error(f"Dettagli errore Vertex AI: {e}")
         if 'last_prompt' in st.session_state:
@@ -372,14 +371,16 @@ st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati 
 # Modelli Gemini comuni - aggiorna questa lista se necessario
 # Vedi: [https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions)
 COMMON_GEMINI_MODELS = [
-    "gemini-1.5-flash-001", # Potrebbe non essere in tutte le regioni o richiedere accesso specifico
-    "gemini-1.0-pro-002",   # Versione stabile di Gemini 1.0 Pro
-    "gemini-1.0-pro-001",   # Versione precedente di Gemini 1.0 Pro
-    "gemini-pro",           # Alias che punta alla versione stabile raccomandata di Gemini Pro
+    "gemini-1.5-flash-001", 
+    "gemini-2.0-flash-001", # AGGIUNTO
+    "gemini-1.0-pro-002",   
+    "gemini-1.0-pro-001",   
+    "gemini-pro",           
 ]
 # Modelli per riassunto, possono essere gli stessi o più piccoli/veloci
 SUMMARY_MODELS = [
     "gemini-1.5-flash-001",
+    "gemini-2.0-flash-001", # AGGIUNTO
     "gemini-1.0-pro-002",
     "gemini-1.0-pro-001",
     "gemini-pro",
@@ -403,9 +404,13 @@ with st.sidebar:
         help="Nomi delle tabelle GSC nel dataset specificato, es. searchdata_site_impression, searchdata_url_impression"
     )
     
-    # Determina l'indice di default per i modelli
     default_sql_model_index = 0
-    if "gemini-1.0-pro-002" in COMMON_GEMINI_MODELS:
+    # Prova a impostare gemini-1.5-flash-001 o gemini-2.0-flash-001 come default se presenti, poi gemini-1.0-pro-002
+    if "gemini-1.5-flash-001" in COMMON_GEMINI_MODELS:
+        default_sql_model_index = COMMON_GEMINI_MODELS.index("gemini-1.5-flash-001")
+    elif "gemini-2.0-flash-001" in COMMON_GEMINI_MODELS:
+        default_sql_model_index = COMMON_GEMINI_MODELS.index("gemini-2.0-flash-001")
+    elif "gemini-1.0-pro-002" in COMMON_GEMINI_MODELS:
         default_sql_model_index = COMMON_GEMINI_MODELS.index("gemini-1.0-pro-002")
     elif "gemini-pro" in COMMON_GEMINI_MODELS:
         default_sql_model_index = COMMON_GEMINI_MODELS.index("gemini-pro")
@@ -413,7 +418,7 @@ with st.sidebar:
     llm_model_name = st.selectbox(
         "Modello LLM Vertex AI (Generazione SQL)",
         COMMON_GEMINI_MODELS,
-        index=default_sql_model_index, # Prova con un modello più stabile come default
+        index=default_sql_model_index,
         help="Scegli il modello per tradurre la domanda in SQL."
     )
     
@@ -430,9 +435,10 @@ with st.sidebar:
         default_summary_model_index = 0
         if "gemini-1.5-flash-001" in SUMMARY_MODELS:
              default_summary_model_index = SUMMARY_MODELS.index("gemini-1.5-flash-001")
+        elif "gemini-2.0-flash-001" in SUMMARY_MODELS:
+            default_summary_model_index = SUMMARY_MODELS.index("gemini-2.0-flash-001")
         elif "gemini-1.0-pro-002" in SUMMARY_MODELS:
             default_summary_model_index = SUMMARY_MODELS.index("gemini-1.0-pro-002")
-
 
         summary_model_name = st.selectbox(
             "Modello LLM Vertex AI (Riassunto Risultati)",
@@ -510,7 +516,7 @@ if submit_button and user_question:
 
                     if enable_summary:
                         current_summary_model = llm_model_name 
-                        if 'summary_model_name' in locals() and summary_model_name: # Verifica se summary_model_name è stata definita (se checkbox è attiva)
+                        if 'summary_model_name' in locals() and summary_model_name: 
                             current_summary_model = summary_model_name
                         
                         with st.spinner("L'AI sta generando un riassunto dei risultati..."):
