@@ -12,92 +12,115 @@ import atexit
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="Conversa con GSC via BigQuery")
 
-# --- Inizio Setup Credenziali GCP (MODIFICATO PER SECRETS INDIVIDUALI) ---
-# Percorso per il file temporaneo delle credenziali
+# --- Inizio Setup Credenziali GCP (MODIFICATO PER GESTIRE AttrDict) ---
 _temp_gcp_creds_file_path = None
 
 def _cleanup_temp_creds_file():
-    """Pulisce il file temporaneo delle credenziali all'uscita."""
     global _temp_gcp_creds_file_path
     if _temp_gcp_creds_file_path and os.path.exists(_temp_gcp_creds_file_path):
         try:
             os.remove(_temp_gcp_creds_file_path)
-            # st.sidebar.info(f"File credenziali temporaneo rimosso: {_temp_gcp_creds_file_path}") # Per debug
         except Exception:
             pass
 
 atexit.register(_cleanup_temp_creds_file)
 
 try:
-    # Controlla se l'app è in esecuzione su Streamlit Cloud e se i secrets sono disponibili
     if hasattr(st, 'secrets'):
-        # Lista delle chiavi attese per costruire il JSON delle credenziali
-        # Basato sul tuo input precedente
         required_secrets = [
             "type", "project_id", "private_key_id", "private_key",
             "client_email", "client_id", "auth_uri", "token_uri",
             "auth_provider_x509_cert_url", "client_x509_cert_url"
         ]
-        # "universe_domain" è opzionale, lo aggiungeremo se presente
-        
-        # Verifica se tutte le chiavi richieste (eccetto universe_domain) sono nei secrets
         all_required_secrets_present = all(key in st.secrets for key in required_secrets)
 
+        gcp_sa_json_str = None
+
         if all_required_secrets_present:
+            if hasattr(st, 'sidebar') and st.sidebar: # Assicura che la sidebar sia pronta
+                 st.sidebar.info("Tentativo di costruire credenziali da secrets individuali.")
+            
             gcp_credentials_dict = {}
             for key in required_secrets:
-                gcp_credentials_dict[key] = st.secrets[key]
+                value = st.secrets[key]
+                if not isinstance(value, str):
+                    if hasattr(st, 'sidebar') and st.sidebar:
+                        st.sidebar.warning(f"Secret '{key}' (tipo: {type(value)}) convertito in stringa.")
+                    value = str(value)
+                gcp_credentials_dict[key] = value
             
-            # Aggiungi universe_domain se presente (alcuni account di servizio più recenti lo includono)
             if "universe_domain" in st.secrets:
-                 gcp_credentials_dict["universe_domain"] = st.secrets["universe_domain"]
-
-            # Converti il dizionario in una stringa JSON
+                 value_ud = st.secrets["universe_domain"]
+                 if not isinstance(value_ud, str):
+                     if hasattr(st, 'sidebar') and st.sidebar:
+                        st.sidebar.warning(f"Secret 'universe_domain' (tipo: {type(value_ud)}) convertito in stringa.")
+                     value_ud = str(value_ud)
+                 gcp_credentials_dict["universe_domain"] = value_ud
+            
             gcp_sa_json_str = json.dumps(gcp_credentials_dict)
 
-            with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_json_file:
-                temp_json_file.write(gcp_sa_json_str)
-                _temp_gcp_creds_file_path = temp_json_file.name
-            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _temp_gcp_creds_file_path
-            
-            # Questo messaggio dovrebbe apparire se Streamlit è già stato importato e inizializzato
-            if hasattr(st, 'sidebar'):
-                 st.sidebar.success("Credenziali GCP costruite dai secrets individuali di Streamlit.")
-        
         elif "GCP_SERVICE_ACCOUNT_JSON" in st.secrets and st.secrets["GCP_SERVICE_ACCOUNT_JSON"]:
-            # Fallback al metodo originale se il secret JSON completo è fornito
-            gcp_sa_json_str = st.secrets["GCP_SERVICE_ACCOUNT_JSON"]
+            if hasattr(st, 'sidebar') and st.sidebar:
+                st.sidebar.info("Tentativo di usare il secret GCP_SERVICE_ACCOUNT_JSON completo.")
+            
+            gcp_sa_json_value = st.secrets["GCP_SERVICE_ACCOUNT_JSON"]
+            
+            if isinstance(gcp_sa_json_value, str):
+                gcp_sa_json_str = gcp_sa_json_value
+            else:
+                if hasattr(st, 'sidebar') and st.sidebar:
+                    st.sidebar.warning(f"Il secret GCP_SERVICE_ACCOUNT_JSON non era una stringa (tipo: {type(gcp_sa_json_value)}). Tentativo di conversione a stringa.")
+                gcp_sa_json_str = str(gcp_sa_json_value)
+
+            try:
+                json.loads(gcp_sa_json_str) 
+            except json.JSONDecodeError as json_err:
+                error_message = f"Il contenuto di GCP_SERVICE_ACCOUNT_JSON non è una stringa JSON valida dopo la conversione: {json_err}. Contenuto (prime 200 chars): {gcp_sa_json_str[:200]}..."
+                if hasattr(st, 'sidebar') and st.sidebar:
+                    st.sidebar.error(error_message)
+                raise ValueError(error_message) from json_err
+        
+        if gcp_sa_json_str:
             with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_json_file:
-                temp_json_file.write(gcp_sa_json_str)
+                temp_json_file.write(gcp_sa_json_str) # gcp_sa_json_str DEVE essere una stringa qui
                 _temp_gcp_creds_file_path = temp_json_file.name
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _temp_gcp_creds_file_path
-            if hasattr(st, 'sidebar'):
-                st.sidebar.info("Credenziali GCP caricate dal secret 'GCP_SERVICE_ACCOUNT_JSON'.")
-        
+            if hasattr(st, 'sidebar') and st.sidebar:
+                 st.sidebar.success("Credenziali GCP elaborate e file temporaneo creato.")
         else:
-            missing_keys = [key for key in required_secrets if key not in st.secrets]
-            if hasattr(st, 'sidebar'):
-                st.sidebar.error(
-                    "Credenziali GCP non configurate correttamente. "
-                    "Assicurati che tutti i campi del JSON dell'account di servizio siano definiti come secrets individuali "
-                    f"(mancanti o non trovati: {', '.join(missing_keys)}), "
-                    "oppure fornisci un singolo secret 'GCP_SERVICE_ACCOUNT_JSON'."
-                )
+            # Nessun metodo di secrets ha funzionato o i secrets necessari non sono presenti
+            missing_keys_str = ""
+            if not all_required_secrets_present and not ("GCP_SERVICE_ACCOUNT_JSON" in st.secrets and st.secrets["GCP_SERVICE_ACCOUNT_JSON"]):
+                 missing_keys = [key for key in required_secrets if key not in st.secrets]
+                 missing_keys_str = f" (secrets individuali mancanti: {', '.join(missing_keys)})"
+            
+            message = (
+                "Credenziali GCP non configurate correttamente. "
+                "Assicurati che tutti i campi del JSON dell'account di servizio siano definiti come secrets individuali, "
+                f"oppure fornisci un singolo secret 'GCP_SERVICE_ACCOUNT_JSON'.{missing_keys_str}"
+            )
+            if hasattr(st, 'sidebar') and st.sidebar:
+                st.sidebar.error(message)
+
 
     elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        if hasattr(st, 'sidebar'):
+        if hasattr(st, 'sidebar') and st.sidebar:
             st.sidebar.info("Utilizzo di GOOGLE_APPLICATION_CREDENTIALS esistente dall'ambiente (sviluppo locale).")
     else:
-        if hasattr(st, 'sidebar'):
+        if hasattr(st, 'sidebar') and st.sidebar:
             st.sidebar.error(
                 "Credenziali GCP non configurate. "
                 "Per il deploy su Streamlit Cloud, configura i secrets. "
                 "Per lo sviluppo locale, imposta la variabile d'ambiente GOOGLE_APPLICATION_CREDENTIALS."
             )
 except Exception as e:
-    if hasattr(st, 'sidebar'):
-        st.sidebar.error(f"Errore durante il setup delle credenziali GCP: {e}")
-# --- Fine Setup Credenziali GCP (MODIFICATO) ---
+    # Questo cattura qualsiasi eccezione durante il setup delle credenziali, inclusa la ValueError sollevata sopra
+    error_msg_setup = f"Errore durante il setup delle credenziali GCP: {e}"
+    if hasattr(st, 'sidebar') and st.sidebar:
+        st.sidebar.error(error_msg_setup)
+    # Potresti voler sollevare nuovamente l'eccezione o uscire se le credenziali sono fondamentali
+    # raise # Rimuovi il commento se vuoi che l'app si fermi qui in caso di errore grave di credenziali
+# --- Fine Setup Credenziali GCP ---
 
 
 # --- Funzioni Core (DA QUI IN POI IL CODICE RIMANE INVARIATO) ---
@@ -107,6 +130,9 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
     Recupera lo schema delle tabelle specificate da BigQuery e lo formatta per il prompt LLM.
     table_names_str: Una stringa di nomi di tabelle separati da virgola.
     """
+    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): # Controllo aggiuntivo
+        st.error("Le credenziali GCP non sono state caricate. Impossibile procedere con get_table_schema_for_prompt.")
+        return None
     if not project_id or not dataset_id or not table_names_str:
         st.error("ID Progetto, ID Dataset e Nomi Tabelle sono necessari per recuperare lo schema.")
         return None
@@ -117,13 +143,12 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
         return None
 
     try:
-        client = bigquery.Client(project=project_id) # Le credenziali vengono prese dall'ambiente
+        client = bigquery.Client(project=project_id) 
     except Exception as e:
         st.error(f"Impossibile inizializzare il client BigQuery: {e}. Assicurati che le credenziali siano configurate.")
         return None
         
     schema_prompt_parts = []
-    # st.write(f"Recupero schema per le tabelle: {', '.join(table_names)} nel dataset {dataset_id}...") # Meno verboso
     
     all_tables_failed = True
     for table_name in table_names:
@@ -152,6 +177,9 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
 
 def generate_sql_from_question(project_id: str, location: str, model_name: str, question: str, table_schema_prompt: str, few_shot_examples_str: str) -> str | None:
     """Genera una query SQL da una domanda in linguaggio naturale utilizzando Vertex AI."""
+    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
+        st.error("Le credenziali GCP non sono state caricate. Impossibile procedere con generate_sql_from_question.")
+        return None
     if not all([project_id, location, model_name, question, table_schema_prompt]):
         st.error("Mancano alcuni parametri per la generazione SQL (progetto, location, modello, domanda, schema).")
         return None
@@ -220,6 +248,9 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
 
 def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | None:
     """Esegue una query SQL su BigQuery e restituisce i risultati come DataFrame Pandas."""
+    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        st.error("Le credenziali GCP non sono state caricate. Impossibile procedere con execute_bigquery_query.")
+        return None
     if not project_id or not sql_query:
         st.error("ID Progetto e query SQL sono necessari per l'esecuzione su BigQuery.")
         return None
@@ -237,6 +268,9 @@ def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | No
 
 def summarize_results_with_llm(project_id: str, location: str, model_name: str, results_df: pd.DataFrame, original_question: str) -> str | None:
     """Riassume i risultati della query in linguaggio naturale utilizzando Vertex AI."""
+    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        st.error("Le credenziali GCP non sono state caricate. Impossibile procedere con summarize_results_with_llm.")
+        return None
     if results_df.empty:
         return "Non ci sono dati da riassumere."
     if not all([project_id, location, model_name]):
@@ -276,19 +310,14 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
 
 
 # --- Interfaccia Streamlit ---
-# La chiamata a st.set_page_config() è stata spostata all'inizio dello script.
-
 st.title("💬 Conversa con i tuoi dati di Google Search Console")
 st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati in BigQuery. L'AI la tradurrà in SQL!")
 
 with st.sidebar:
     st.header("⚙️ Configurazione")
-    # Il messaggio sullo stato delle credenziali ora appare in cima alla sidebar
-    # grazie alla logica di setup modificata, se st.sidebar è già accessibile.
-    # La logica di visualizzazione dei messaggi di stato delle credenziali è già nel blocco try-except sopra.
     
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
-                                   value=st.secrets.get("project_id", "") if hasattr(st, 'secrets') and "project_id" in st.secrets else "", # Precompila se project_id è un secret
+                                   value=st.secrets.get("project_id", "") if hasattr(st, 'secrets') and "project_id" in st.secrets else "",
                                    help="Il tuo ID progetto GCP dove risiedono i dati BigQuery e dove usare Vertex AI.")
     gcp_location = st.text_input("Location Vertex AI", "europe-west1", help="Es. us-central1, europe-west1. Deve supportare il modello scelto.")
     bq_dataset_id = st.text_input("ID Dataset BigQuery", help="Il dataset contenente le tabelle GSC.")
@@ -341,14 +370,12 @@ if gcp_project_id and bq_dataset_id and bq_table_names_str:
             st.session_state.table_schema_for_prompt = get_table_schema_for_prompt(gcp_project_id, bq_dataset_id, bq_table_names_str)
         st.session_state.current_schema_config_key = schema_config_key
         if st.session_state.table_schema_for_prompt:
-            if hasattr(st, 'sidebar'): # Assicura che st.sidebar sia disponibile
+            if hasattr(st, 'sidebar') and st.sidebar: 
                 st.sidebar.success("Schema tabelle caricato!")
                 with st.sidebar.expander("Vedi Schema Caricato per Prompt"):
                     st.code(st.session_state.table_schema_for_prompt, language='text')
-        # else: # L'errore viene già mostrato da get_table_schema_for_prompt
-            # st.sidebar.error("Errore nel caricamento dello schema. Controlla i log e la configurazione.")
-elif not (gcp_project_id and bq_dataset_id and bq_table_names_str) and any([gcp_project_id, bq_dataset_id, bq_table_names_str]): # Se alcuni ma non tutti i campi sono compilati
-     if hasattr(st, 'sidebar'): # Assicura che st.sidebar sia disponibile
+elif not (gcp_project_id and bq_dataset_id and bq_table_names_str) and any([gcp_project_id, bq_dataset_id, bq_table_names_str]): 
+     if hasattr(st, 'sidebar') and st.sidebar: 
         st.sidebar.warning("Completa ID Progetto, ID Dataset e Nomi Tabelle per caricare lo schema.")
 
 
@@ -357,7 +384,6 @@ with st.form(key='query_form'):
     submit_button = st.form_submit_button(label="Chiedi all'AI ✨")
 
 if submit_button and user_question:
-    # La verifica delle credenziali ora è implicita nel successo del blocco try/except all'inizio
     gcp_creds_loaded = bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
 
     if not all([gcp_project_id, gcp_location, bq_dataset_id, bq_table_names_str]):
@@ -392,9 +418,17 @@ if submit_button and user_question:
                     st.dataframe(st.session_state.query_results)
 
                     if enable_summary:
+                        # Assicurati che summary_model_name sia definito se enable_summary è True
+                        current_summary_model = llm_model_name # Default al modello SQL
+                        if 'summary_model_name' in locals() and summary_model_name:
+                            current_summary_model = summary_model_name
+                        elif 'summary_model_name' in globals() and globals()['summary_model_name']: # Controllo globale se definito prima
+                            current_summary_model = globals()['summary_model_name']
+
+
                         with st.spinner("L'AI sta generando un riassunto dei risultati..."):
                             st.session_state.results_summary = summarize_results_with_llm(
-                                gcp_project_id, gcp_location, summary_model_name if 'summary_model_name' in locals() and summary_model_name else llm_model_name, 
+                                gcp_project_id, gcp_location, current_summary_model, 
                                 st.session_state.query_results, user_question
                             )
                         if st.session_state.results_summary:
