@@ -289,42 +289,46 @@ expander_title_text = "ℹ️ Istruzioni per la Configurazione Iniziale"
 
 with st.expander(expander_title_text, expanded=False):
     st.write("Per utilizzare questa applicazione, assicurati di aver completato i seguenti passaggi:")
-    st.write("") # Riga vuota per spaziatura
+    st.write("---") # Separatore
     st.subheader("1. Esportazione Dati GSC in BigQuery:")
-    st.write("* Configura l'esportazione dei dati di Google Search Console verso un dataset BigQuery nel tuo progetto Google Cloud.")
-    st.write("* [Guida ufficiale Google per l'esportazione GSC a BigQuery](https://support.google.com/webmasters/answer/12918484).")
-    st.write("")
+    st.write("- Configura l'esportazione dei dati di Google Search Console verso un dataset BigQuery nel tuo progetto Google Cloud.")
+    st.write("- [Guida ufficiale Google per l'esportazione GSC a BigQuery](https://support.google.com/webmasters/answer/12918484).")
+    st.write("---")
 
     st.subheader("2. Creazione Account di Servizio GCP:")
-    st.write('* Nel tuo progetto Google Cloud, vai su "IAM e amministrazione" > "Account di servizio".')
-    st.write("* Crea un nuovo account di servizio (es. `gsc-chatbot-sa`).")
-    st.write("* Assegna i seguenti ruoli minimi a questo account di servizio sul progetto:")
-    st.write("  * `Vertex AI User` (per accedere ai modelli Gemini)")
-    st.write("  * `BigQuery Data Viewer` (per leggere dati e metadati delle tabelle)")
-    st.write("  * `BigQuery Job User` (per eseguire query)")
-    st.write("* Crea una chiave JSON per questo account di servizio e scaricala.")
-    st.write("")
+    st.write('- Nel tuo progetto Google Cloud, vai su "IAM e amministrazione" > "Account di servizio".')
+    st.write("- Crea un nuovo account di servizio (es. `gsc-chatbot-sa`).")
+    st.write("- Assegna i seguenti ruoli minimi a questo account di servizio sul progetto:")
+    st.write("  - `Vertex AI User` (per accedere ai modelli Gemini)")
+    st.write("  - `BigQuery Data Viewer` (per leggere dati e metadati delle tabelle)")
+    st.write("  - `BigQuery Job User` (per eseguire query)")
+    st.write("- Crea una chiave JSON per questo account di servizio e scaricala.")
+    st.write("---")
 
     st.subheader("3. Configurazione Secrets su Streamlit Cloud:")
-    st.write("* Se stai deployando su Streamlit Community Cloud, vai nelle impostazioni della tua app > \"Secrets\".")
-    st.write("""* Aggiungi i campi del file JSON della chiave dell'account di servizio come secrets individuali (es. `type = "service_account"`, `project_id = "..."`, `private_key = "..."`, ecc.). 
-    **Assicurati che la `private_key` sia inserita correttamente, includendo i caratteri di newline `\\n` se copi da un JSON su una riga, o usando le virgolette triple `'''...'''` se copi una chiave multi-linea.**""")
-    st.write("""* *Alternativa:* Puoi aggiungere un singolo secret chiamato `GCP_SERVICE_ACCOUNT_JSON` il cui valore è l'INTERO contenuto del file JSON della chiave (racchiuso tra triple virgolette `"""..."""`). 
-    L'app proverà prima a usare i secrets individuali.""")
-    st.write("")
+    st.write("- Se stai deployando su Streamlit Community Cloud, vai nelle impostazioni della tua app > \"Secrets\".")
+    st.write(
+        "- Aggiungi i campi del file JSON della chiave dell'account di servizio come secrets individuali (es. `type = \"service_account\"`, `project_id = \"...\"`, `private_key = \"...\"`, ecc.). "
+        "**Assicurati che la `private_key` sia inserita correttamente, includendo i caratteri di newline `\\n` se copi da un JSON su una riga, o usando le virgolette triple `'''...'''` se copi una chiave multi-linea.**"
+    )
+    st.write(
+        "- *Alternativa:* Puoi aggiungere un singolo secret chiamato `GCP_SERVICE_ACCOUNT_JSON` il cui valore è l'INTERO contenuto del file JSON della chiave (racchiuso tra triple virgolette `\"\"\"...\"\"\"`). "
+        "L'app proverà prima a usare i secrets individuali."
+    )
+    st.write("---")
 
     st.subheader("4. Abilitazione API Necessarie:")
-    st.write("* Nel tuo progetto Google Cloud, assicurati che le seguenti API siano abilitate:")
-    st.write("  * `Vertex AI API`")
-    st.write("  * `BigQuery API`")
-    st.write("")
+    st.write("- Nel tuo progetto Google Cloud, assicurati che le seguenti API siano abilitate:")
+    st.write("  - `Vertex AI API`")
+    st.write("  - `BigQuery API`")
+    st.write("---")
 
     st.subheader("5. Configurazione Parametri App (Sidebar):")
-    st.write("* Inserisci l'**ID del tuo Progetto Google Cloud** (quello contenente i dati BigQuery e dove usare Vertex AI).")
-    st.write(f"* Specifica la **Location Vertex AI** (es. `europe-west1`, `us-central1`). Assicurati che il modello `{TARGET_GEMINI_MODEL}` sia disponibile in questa regione per il tuo progetto.")
-    st.write("* Inserisci l'**ID del Dataset BigQuery** dove hai esportato i dati GSC.")
-    st.write("* Fornisci i **Nomi delle Tabelle GSC** (separate da virgola) che vuoi interrogare (es. `searchdata_url_impression`, `searchdata_site_impression`).")
-    st.write("")
+    st.write("- Inserisci l'**ID del tuo Progetto Google Cloud** (quello contenente i dati BigQuery e dove usare Vertex AI).")
+    st.write(f"- Specifica la **Location Vertex AI** (es. `europe-west1`, `us-central1`). Assicurati che il modello `{TARGET_GEMINI_MODEL}` sia disponibile in questa regione per il tuo progetto.")
+    st.write("- Inserisci l'**ID del Dataset BigQuery** dove hai esportato i dati GSC.")
+    st.write("- Fornisci i **Nomi delle Tabelle GSC** (separate da virgola) che vuoi interrogare (es. `searchdata_url_impression`, `searchdata_site_impression`).")
+    st.write("---")
     st.write("Una volta configurato tutto, potrai fare domande sui tuoi dati!")
 
 
