@@ -321,11 +321,11 @@ with st.sidebar:
     st.divider()
     st.subheader("2. Parametri Query")
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
-                                   value="nlp-project-448915", 
+                                   value="example-project-448915", 
                                    help="Il tuo ID progetto GCP dove risiedono i dati BigQuery e dove usare Vertex AI.")
     gcp_location = st.text_input("Location Vertex AI", "europe-west1", help="Es. us-central1, europe-west1. Assicurati che il modello sia disponibile qui.")
     bq_dataset_id = st.text_input("ID Dataset BigQuery", 
-                                  value="gscbu", 
+                                  value="example", 
                                   help="Il dataset contenente le tabelle GSC.")
     bq_table_names_str = st.text_area(
         "Nomi Tabelle GSC (separate da virgola)", 
@@ -445,5 +445,12 @@ elif not submit_button:
         st.subheader("📝 Riassunto dei Risultati (Precedente):")
         st.markdown(st.session_state.results_summary)
 
-st.markdown("---")
-st.caption(f"Sviluppato con Vertex AI ({TARGET_GEMINI_MODEL}) e Streamlit.")
+st.markdown("---") 
+st.markdown(
+    """
+    <div style="text-align: center; padding: 10px;">
+        Made with ❤️ by <a href="https://www.linkedin.com/in/francisco-nardi-212b338b/" target="_blank">Francisco Nardi</a>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
