@@ -66,43 +66,39 @@ try:
             gcp_sa_json_value = st.secrets["GCP_SERVICE_ACCOUNT_JSON"]
             
             if isinstance(gcp_sa_json_value, str):
-                # Se è già una stringa, si assume sia un JSON valido o da validare
                 gcp_sa_json_str = gcp_sa_json_value
                 try:
-                    json.loads(gcp_sa_json_str) # Valida se la stringa è un JSON corretto
+                    json.loads(gcp_sa_json_str) 
                 except json.JSONDecodeError as json_err:
                     error_message = f"Il secret GCP_SERVICE_ACCOUNT_JSON (fornito come stringa) non è JSON valido: {json_err}. Contenuto (prime 200 chars): {gcp_sa_json_str[:200]}..."
                     if hasattr(st, 'sidebar') and st.sidebar:
                         st.sidebar.error(error_message)
                     raise ValueError(error_message) from json_err
-            # Modifica qui per gestire correttamente AttrDict e altri dict-like
             elif hasattr(gcp_sa_json_value, 'items') and callable(getattr(gcp_sa_json_value, 'items')):
-                # Se è un dizionario/AttrDict (es. da una tabella TOML), serializzalo in una stringa JSON
                 if hasattr(st, 'sidebar') and st.sidebar:
                     st.sidebar.warning(f"Il secret GCP_SERVICE_ACCOUNT_JSON era un oggetto dict-like (tipo: {type(gcp_sa_json_value)}). Convertito in stringa JSON.")
                 try:
-                    gcp_sa_json_str = json.dumps(dict(gcp_sa_json_value)) # Converte AttrDict/dict-like in dict, poi in stringa JSON
+                    gcp_sa_json_str = json.dumps(dict(gcp_sa_json_value)) 
                 except Exception as dump_err:
                     error_message = f"Errore durante la conversione del secret GCP_SERVICE_ACCOUNT_JSON (tipo: {type(gcp_sa_json_value)}) in JSON: {dump_err}"
                     if hasattr(st, 'sidebar') and st.sidebar:
                         st.sidebar.error(error_message)
                     raise ValueError(error_message) from dump_err
             else:
-                # Tipo inaspettato, prova a convertirlo in stringa e spera sia un JSON
                 if hasattr(st, 'sidebar') and st.sidebar:
                     st.sidebar.warning(f"Il secret GCP_SERVICE_ACCOUNT_JSON non era né stringa né dict-like (tipo: {type(gcp_sa_json_value)}). Tentativo di conversione diretta a stringa e validazione JSON.")
                 gcp_sa_json_str = str(gcp_sa_json_value)
                 try:
-                    json.loads(gcp_sa_json_str) # Valida
+                    json.loads(gcp_sa_json_str) 
                 except json.JSONDecodeError as json_err:
                     error_message = f"Il secret GCP_SERVICE_ACCOUNT_JSON (convertito da tipo sconosciuto {type(gcp_sa_json_value)}) non è JSON valido: {json_err}. Contenuto (prime 200 chars): {gcp_sa_json_str[:200]}..."
                     if hasattr(st, 'sidebar') and st.sidebar:
                         st.sidebar.error(error_message)
                     raise ValueError(error_message) from json_err
         
-        if gcp_sa_json_str is not None: # Assicura che gcp_sa_json_str sia stato impostato
+        if gcp_sa_json_str is not None: 
             with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_json_file:
-                temp_json_file.write(gcp_sa_json_str) # Ora gcp_sa_json_str dovrebbe essere sempre una stringa JSON
+                temp_json_file.write(gcp_sa_json_str) 
                 _temp_gcp_creds_file_path = temp_json_file.name
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _temp_gcp_creds_file_path
             if hasattr(st, 'sidebar') and st.sidebar:
@@ -138,35 +134,56 @@ except Exception as e:
 # --- Fine Setup Credenziali GCP ---
 
 
-# --- Funzioni Core (DA QUI IN POI IL CODICE RIMANE INVARIATO) ---
+# --- Funzioni Core (MODIFICATA get_table_schema_for_prompt con più logging) ---
 
 def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_str: str) -> str | None:
     """
     Recupera lo schema delle tabelle specificate da BigQuery e lo formatta per il prompt LLM.
-    table_names_str: Una stringa di nomi di tabelle separati da virgola.
+    Aggiunge logging alla sidebar.
     """
+    if hasattr(st, 'sidebar') and st.sidebar:
+        st.sidebar.info(f"Inizio get_table_schema_for_prompt per progetto '{project_id}', dataset '{dataset_id}'.")
+
     if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
         st.error("Le credenziali GCP non sono state caricate. Impossibile procedere con get_table_schema_for_prompt.")
+        if hasattr(st, 'sidebar') and st.sidebar:
+            st.sidebar.error("get_table_schema_for_prompt: GOOGLE_APPLICATION_CREDENTIALS non impostata.")
         return None
     if not project_id or not dataset_id or not table_names_str:
         st.error("ID Progetto, ID Dataset e Nomi Tabelle sono necessari per recuperare lo schema.")
+        if hasattr(st, 'sidebar') and st.sidebar:
+            st.sidebar.error("get_table_schema_for_prompt: ID Progetto, Dataset o Nomi Tabelle mancanti.")
         return None
 
     table_names = [name.strip() for name in table_names_str.split(',') if name.strip()]
     if not table_names:
         st.error("Per favore, fornisci almeno un nome di tabella valido.")
+        if hasattr(st, 'sidebar') and st.sidebar:
+            st.sidebar.error("get_table_schema_for_prompt: Nessun nome di tabella fornito dopo la pulizia.")
         return None
+    
+    if hasattr(st, 'sidebar') and st.sidebar:
+        st.sidebar.info(f"Nomi tabelle da processare: {table_names}")
 
     try:
+        if hasattr(st, 'sidebar') and st.sidebar:
+            st.sidebar.info(f"Inizializzazione client BigQuery per progetto: {project_id}")
         client = bigquery.Client(project=project_id) 
+        if hasattr(st, 'sidebar') and st.sidebar:
+            st.sidebar.success("Client BigQuery inizializzato con successo.")
     except Exception as e:
-        st.error(f"Impossibile inizializzare il client BigQuery: {e}. Assicurati che le credenziali siano configurate.")
+        st.error(f"Impossibile inizializzare il client BigQuery: {e}. Assicurati che le credenziali siano configurate e i permessi corretti.")
+        if hasattr(st, 'sidebar') and st.sidebar:
+            st.sidebar.error(f"get_table_schema_for_prompt: Errore inizializzazione client BigQuery: {e}")
         return None
         
     schema_prompt_parts = []
-    
     all_tables_failed = True
+
     for table_name in table_names:
+        full_table_id = f"{project_id}.{dataset_id}.{table_name}"
+        if hasattr(st, 'sidebar') and st.sidebar:
+            st.sidebar.info(f"Tentativo di recupero schema per: {full_table_id}")
         try:
             table_ref = client.dataset(dataset_id, project=project_id).table(table_name)
             table = client.get_table(table_ref)
@@ -176,18 +193,32 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
                 columns_desc.append(f"  - {schema_field.name} ({schema_field.field_type}){description}")
             
             schema_prompt_parts.append(
-                f"Tabella: `{project_id}.{dataset_id}.{table_name}`\nColonne:\n" + "\n".join(columns_desc)
+                f"Tabella: `{full_table_id}`\nColonne:\n" + "\n".join(columns_desc)
             )
             all_tables_failed = False 
+            if hasattr(st, 'sidebar') and st.sidebar:
+                st.sidebar.success(f"Schema recuperato con successo per: {full_table_id}")
         except Exception as e:
-            st.warning(f"Impossibile recuperare lo schema per la tabella {project_id}.{dataset_id}.{table_name}: {e}")
-            schema_prompt_parts.append(f"# Errore nel recupero schema per tabella: {project_id}.{dataset_id}.{table_name}")
+            st.warning(f"Impossibile recuperare lo schema per la tabella {full_table_id}: {e}")
+            if hasattr(st, 'sidebar') and st.sidebar:
+                st.sidebar.error(f"get_table_schema_for_prompt: Errore recupero schema per {full_table_id}: {e}")
+            schema_prompt_parts.append(f"# Errore nel recupero schema per tabella: {full_table_id}")
 
     if all_tables_failed and table_names: 
-        st.error("Nessuno schema di tabella è stato recuperato con successo. Controlla i nomi delle tabelle, i permessi e la configurazione del progetto.")
+        st.error("Nessuno schema di tabella è stato recuperato con successo. Controlla i nomi delle tabelle, i permessi e la configurazione del progetto. Vedi sidebar per dettagli.")
+        if hasattr(st, 'sidebar') and st.sidebar:
+            st.sidebar.error("get_table_schema_for_prompt: Fallito il recupero di tutti gli schemi delle tabelle.")
+        return None
+    
+    if not schema_prompt_parts: 
+        if hasattr(st, 'sidebar') and st.sidebar:
+            st.sidebar.warning("get_table_schema_for_prompt: schema_prompt_parts è vuoto alla fine, ma non tutti i recuperi sono falliti. Strano.")
         return None
         
-    return "\n\n".join(schema_prompt_parts)
+    final_schema_prompt = "\n\n".join(schema_prompt_parts)
+    if hasattr(st, 'sidebar') and st.sidebar:
+        st.sidebar.success("get_table_schema_for_prompt completato.")
+    return final_schema_prompt
 
 
 def generate_sql_from_question(project_id: str, location: str, model_name: str, question: str, table_schema_prompt: str, few_shot_examples_str: str) -> str | None:
@@ -200,6 +231,10 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
         return None
 
     try:
+        # Aggiungi un log per vedere il modello e la location usati
+        if hasattr(st, 'sidebar') and st.sidebar:
+            st.sidebar.info(f"Vertex AI Init: project='{project_id}', location='{location}'. Model to use: '{model_name}'")
+        
         vertexai.init(project=project_id, location=location) 
         model = GenerativeModel(model_name)
 
@@ -255,7 +290,9 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
         return sql_query
 
     except Exception as e:
-        st.error(f"Errore durante la chiamata a Vertex AI: {e}")
+        st.error(f"Errore durante la chiamata a Vertex AI: {e}") # L'errore 404 apparirà qui
+        if hasattr(st, 'sidebar') and st.sidebar:
+             st.sidebar.error(f"Dettagli errore Vertex AI: {e}")
         if 'last_prompt' in st.session_state:
             st.expander("Ultimo Prompt Inviato (Debug)").code(st.session_state.last_prompt, language='text')
         return None
@@ -293,6 +330,8 @@ def summarize_results_with_llm(project_id: str, location: str, model_name: str, 
         return None
 
     try:
+        if hasattr(st, 'sidebar') and st.sidebar:
+            st.sidebar.info(f"Vertex AI Init (Riassunto): project='{project_id}', location='{location}'. Model to use: '{model_name}'")
         vertexai.init(project=project_id, location=location) 
         model = GenerativeModel(model_name)
 
@@ -321,6 +360,8 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
 
     except Exception as e:
         st.error(f"Errore durante la generazione del riassunto: {e}")
+        if hasattr(st, 'sidebar') and st.sidebar:
+             st.sidebar.error(f"Dettagli errore Vertex AI (Riassunto): {e}")
         return "Errore nella generazione del riassunto."
 
 
@@ -328,26 +369,52 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
 st.title("💬 Conversa con i tuoi dati di Google Search Console")
 st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati in BigQuery. L'AI la tradurrà in SQL!")
 
+# Modelli Gemini comuni - aggiorna questa lista se necessario
+# Vedi: [https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions)
+COMMON_GEMINI_MODELS = [
+    "gemini-1.5-flash-001", # Potrebbe non essere in tutte le regioni o richiedere accesso specifico
+    "gemini-1.0-pro-002",   # Versione stabile di Gemini 1.0 Pro
+    "gemini-1.0-pro-001",   # Versione precedente di Gemini 1.0 Pro
+    "gemini-pro",           # Alias che punta alla versione stabile raccomandata di Gemini Pro
+]
+# Modelli per riassunto, possono essere gli stessi o più piccoli/veloci
+SUMMARY_MODELS = [
+    "gemini-1.5-flash-001",
+    "gemini-1.0-pro-002",
+    "gemini-1.0-pro-001",
+    "gemini-pro",
+]
+
+
 with st.sidebar:
     st.header("⚙️ Configurazione")
+    st.markdown("ℹ️ Se riscontri errori '404 Model not found', verifica che il modello selezionato sia disponibile nella Location Vertex AI scelta per il tuo progetto. [Consulta le versioni dei modelli Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions).")
     
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
-                                   value="nlp-project-448915", # PRECOMPILATO
+                                   value="nlp-project-448915", 
                                    help="Il tuo ID progetto GCP dove risiedono i dati BigQuery e dove usare Vertex AI.")
-    gcp_location = st.text_input("Location Vertex AI", "europe-west1", help="Es. us-central1, europe-west1. Deve supportare il modello scelto.")
+    gcp_location = st.text_input("Location Vertex AI", "europe-west1", help="Es. us-central1, europe-west1. Assicurati che il modello sia disponibile qui.")
     bq_dataset_id = st.text_input("ID Dataset BigQuery", 
-                                  value="gscbu", # PRECOMPILATO
+                                  value="gscbu", 
                                   help="Il dataset contenente le tabelle GSC.")
     bq_table_names_str = st.text_area(
         "Nomi Tabelle GSC (separate da virgola)", 
-        "searchdata_url_impression", # PRECOMPILATO
+        "searchdata_url_impression,searchdata_site_impression", 
         help="Nomi delle tabelle GSC nel dataset specificato, es. searchdata_site_impression, searchdata_url_impression"
     )
+    
+    # Determina l'indice di default per i modelli
+    default_sql_model_index = 0
+    if "gemini-1.0-pro-002" in COMMON_GEMINI_MODELS:
+        default_sql_model_index = COMMON_GEMINI_MODELS.index("gemini-1.0-pro-002")
+    elif "gemini-pro" in COMMON_GEMINI_MODELS:
+        default_sql_model_index = COMMON_GEMINI_MODELS.index("gemini-pro")
+
     llm_model_name = st.selectbox(
         "Modello LLM Vertex AI (Generazione SQL)",
-        ("gemini-1.5-flash-001", "gemini-1.0-pro-001", "gemini-1.5-pro-001"),
-        index=0,
-        help="Scegli il modello per tradurre la domanda in SQL. Gemini 1.5 Flash è veloce ed economico."
+        COMMON_GEMINI_MODELS,
+        index=default_sql_model_index, # Prova con un modello più stabile come default
+        help="Scegli il modello per tradurre la domanda in SQL."
     )
     
     st.subheader("Esempi Few-Shot (Opzionale ma Raccomandato)")
@@ -360,11 +427,18 @@ with st.sidebar:
     
     enable_summary = st.checkbox("Abilita riassunto LLM dei risultati", value=True)
     if enable_summary:
+        default_summary_model_index = 0
+        if "gemini-1.5-flash-001" in SUMMARY_MODELS:
+             default_summary_model_index = SUMMARY_MODELS.index("gemini-1.5-flash-001")
+        elif "gemini-1.0-pro-002" in SUMMARY_MODELS:
+            default_summary_model_index = SUMMARY_MODELS.index("gemini-1.0-pro-002")
+
+
         summary_model_name = st.selectbox(
             "Modello LLM Vertex AI (Riassunto Risultati)",
-            ("gemini-1.5-flash-001", "gemini-1.0-pro-001"),
-            index=0,
-            help="Scegli il modello per riassumere i risultati. Gemini 1.5 Flash è una buona opzione."
+            SUMMARY_MODELS,
+            index=default_summary_model_index,
+            help="Scegli il modello per riassumere i risultati."
         )
 
 if 'sql_query' not in st.session_state:
@@ -435,14 +509,10 @@ if submit_button and user_question:
                     st.dataframe(st.session_state.query_results)
 
                     if enable_summary:
-                        # Assicurati che summary_model_name sia definito se enable_summary è True
-                        current_summary_model = llm_model_name # Default al modello SQL
-                        if 'summary_model_name' in locals() and summary_model_name:
+                        current_summary_model = llm_model_name 
+                        if 'summary_model_name' in locals() and summary_model_name: # Verifica se summary_model_name è stata definita (se checkbox è attiva)
                             current_summary_model = summary_model_name
-                        elif 'summary_model_name' in globals() and globals()['summary_model_name']: # Controllo globale se definito prima
-                            current_summary_model = globals()['summary_model_name']
-
-
+                        
                         with st.spinner("L'AI sta generando un riassunto dei risultati..."):
                             st.session_state.results_summary = summarize_results_with_llm(
                                 gcp_project_id, gcp_location, current_summary_model, 
