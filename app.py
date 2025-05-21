@@ -285,11 +285,8 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
 st.title("💬 Conversa con i tuoi dati di Google Search Console")
 st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati in BigQuery. L'AI la tradurrà in SQL!")
 
-# Se l'errore di sintassi persiste, il problema potrebbe essere prima di questa sezione.
-# Controllare attentamente TUTTO il codice precedente per parentesi, [], {} non chiuse.
-with st.expander("ℹ️ Istruzioni per la Configurazione Iniziale", expanded=False):
-    st.markdown(
-        """
+expander_title_text = "ℹ️ Istruzioni per la Configurazione Iniziale"
+instructions_markdown_text = """
 Per utilizzare questa applicazione, assicurati di aver completato i seguenti passaggi:
 
 1.  **Esportazione Dati GSC in BigQuery:**
@@ -322,8 +319,10 @@ Per utilizzare questa applicazione, assicurati di aver completato i seguenti pas
     * Fornisci i **Nomi delle Tabelle GSC** (separate da virgola) che vuoi interrogare (es. `searchdata_url_impression`, `searchdata_site_impression`).
 
 Una volta configurato tutto, potrai fare domande sui tuoi dati!
-        """
-    )
+"""
+
+with st.expander(expander_title_text, expanded=False):
+    st.markdown(instructions_markdown_text)
 
 
 with st.sidebar:
