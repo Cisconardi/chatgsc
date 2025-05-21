@@ -332,13 +332,15 @@ with st.sidebar:
     st.header("⚙️ Configurazione")
     
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
-                                   value=st.secrets.get("project_id", "") if hasattr(st, 'secrets') and "project_id" in st.secrets else "",
+                                   value="nlp-project-448915", # PRECOMPILATO
                                    help="Il tuo ID progetto GCP dove risiedono i dati BigQuery e dove usare Vertex AI.")
     gcp_location = st.text_input("Location Vertex AI", "europe-west1", help="Es. us-central1, europe-west1. Deve supportare il modello scelto.")
-    bq_dataset_id = st.text_input("ID Dataset BigQuery", help="Il dataset contenente le tabelle GSC.")
+    bq_dataset_id = st.text_input("ID Dataset BigQuery", 
+                                  value="gscbu", # PRECOMPILATO
+                                  help="Il dataset contenente le tabelle GSC.")
     bq_table_names_str = st.text_area(
         "Nomi Tabelle GSC (separate da virgola)", 
-        "searchdata_site_impression, searchdata_url_impression", 
+        "searchdata_url_impression", # PRECOMPILATO
         help="Nomi delle tabelle GSC nel dataset specificato, es. searchdata_site_impression, searchdata_url_impression"
     )
     llm_model_name = st.selectbox(
