@@ -133,6 +133,9 @@ except Exception as e:
         st.sidebar.error(error_msg_setup)
 # --- Fine Setup Credenziali GCP ---
 
+# Modello Gemini da utilizzare
+TARGET_GEMINI_MODEL = "gemini-2.0-flash-001"
+
 
 # --- Funzioni Core (MODIFICATA get_table_schema_for_prompt con più logging) ---
 
@@ -368,28 +371,12 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
 st.title("💬 Conversa con i tuoi dati di Google Search Console")
 st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati in BigQuery. L'AI la tradurrà in SQL!")
 
-# Modelli Gemini comuni - aggiorna questa lista se necessario
-# Vedi: [https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions)
-COMMON_GEMINI_MODELS = [
-    "gemini-1.5-flash-001", 
-    "gemini-2.0-flash-001", # AGGIUNTO
-    "gemini-1.0-pro-002",   
-    "gemini-1.0-pro-001",   
-    "gemini-pro",           
-]
-# Modelli per riassunto, possono essere gli stessi o più piccoli/veloci
-SUMMARY_MODELS = [
-    "gemini-1.5-flash-001",
-    "gemini-2.0-flash-001", # AGGIUNTO
-    "gemini-1.0-pro-002",
-    "gemini-1.0-pro-001",
-    "gemini-pro",
-]
-
-
 with st.sidebar:
     st.header("⚙️ Configurazione")
-    st.markdown("ℹ️ Se riscontri errori '404 Model not found', verifica che il modello selezionato sia disponibile nella Location Vertex AI scelta per il tuo progetto. [Consulta le versioni dei modelli Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions).")
+    st.markdown(f"ℹ️ L'applicazione è configurata per usare il modello **{TARGET_GEMINI_MODEL}**. "
+                "Se riscontri errori '404 Model not found', verifica che questo modello sia disponibile "
+                "nella Location Vertex AI scelta per il tuo progetto. "
+                "[Consulta le versioni dei modelli Vertex AI](https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions).")
     
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
                                    value="nlp-project-448915", 
@@ -404,23 +391,8 @@ with st.sidebar:
         help="Nomi delle tabelle GSC nel dataset specificato, es. searchdata_site_impression, searchdata_url_impression"
     )
     
-    default_sql_model_index = 0
-    # Prova a impostare gemini-1.5-flash-001 o gemini-2.0-flash-001 come default se presenti, poi gemini-1.0-pro-002
-    if "gemini-1.5-flash-001" in COMMON_GEMINI_MODELS:
-        default_sql_model_index = COMMON_GEMINI_MODELS.index("gemini-1.5-flash-001")
-    elif "gemini-2.0-flash-001" in COMMON_GEMINI_MODELS:
-        default_sql_model_index = COMMON_GEMINI_MODELS.index("gemini-2.0-flash-001")
-    elif "gemini-1.0-pro-002" in COMMON_GEMINI_MODELS:
-        default_sql_model_index = COMMON_GEMINI_MODELS.index("gemini-1.0-pro-002")
-    elif "gemini-pro" in COMMON_GEMINI_MODELS:
-        default_sql_model_index = COMMON_GEMINI_MODELS.index("gemini-pro")
-
-    llm_model_name = st.selectbox(
-        "Modello LLM Vertex AI (Generazione SQL)",
-        COMMON_GEMINI_MODELS,
-        index=default_sql_model_index,
-        help="Scegli il modello per tradurre la domanda in SQL."
-    )
+    # Rimosso st.selectbox per la selezione del modello, poiché è fisso
+    # llm_model_name = TARGET_GEMINI_MODEL # Usato direttamente nelle funzioni
     
     st.subheader("Esempi Few-Shot (Opzionale ma Raccomandato)")
     st.caption("Aggiungi esempi per migliorare la traduzione NL-to-SQL. Usa i nomi completi delle tabelle (`progetto.dataset.tabella`).")
@@ -431,21 +403,7 @@ with st.sidebar:
     )
     
     enable_summary = st.checkbox("Abilita riassunto LLM dei risultati", value=True)
-    if enable_summary:
-        default_summary_model_index = 0
-        if "gemini-1.5-flash-001" in SUMMARY_MODELS:
-             default_summary_model_index = SUMMARY_MODELS.index("gemini-1.5-flash-001")
-        elif "gemini-2.0-flash-001" in SUMMARY_MODELS:
-            default_summary_model_index = SUMMARY_MODELS.index("gemini-2.0-flash-001")
-        elif "gemini-1.0-pro-002" in SUMMARY_MODELS:
-            default_summary_model_index = SUMMARY_MODELS.index("gemini-1.0-pro-002")
-
-        summary_model_name = st.selectbox(
-            "Modello LLM Vertex AI (Riassunto Risultati)",
-            SUMMARY_MODELS,
-            index=default_summary_model_index,
-            help="Scegli il modello per riassumere i risultati."
-        )
+    # Rimosso st.selectbox per il modello di riassunto, userà TARGET_GEMINI_MODEL
 
 if 'sql_query' not in st.session_state:
     st.session_state.sql_query = ""
@@ -494,9 +452,12 @@ if submit_button and user_question:
         st.session_state.query_results = None
         st.session_state.results_summary = ""
         
-        with st.spinner("L'AI sta pensando e generando la query SQL..."):
+        # Usa il modello fisso
+        llm_model_name_to_use = TARGET_GEMINI_MODEL
+
+        with st.spinner(f"L'AI sta pensando (usando {llm_model_name_to_use}) e generando la query SQL..."):
             st.session_state.sql_query = generate_sql_from_question(
-                gcp_project_id, gcp_location, llm_model_name, user_question, 
+                gcp_project_id, gcp_location, llm_model_name_to_use, user_question, 
                 st.session_state.table_schema_for_prompt, few_shot_examples
             )
 
@@ -515,13 +476,9 @@ if submit_button and user_question:
                     st.dataframe(st.session_state.query_results)
 
                     if enable_summary:
-                        current_summary_model = llm_model_name 
-                        if 'summary_model_name' in locals() and summary_model_name: 
-                            current_summary_model = summary_model_name
-                        
-                        with st.spinner("L'AI sta generando un riassunto dei risultati..."):
+                        with st.spinner(f"L'AI sta generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
                             st.session_state.results_summary = summarize_results_with_llm(
-                                gcp_project_id, gcp_location, current_summary_model, 
+                                gcp_project_id, gcp_location, llm_model_name_to_use, 
                                 st.session_state.query_results, user_question
                             )
                         if st.session_state.results_summary:
@@ -548,4 +505,4 @@ elif not submit_button:
         st.markdown(st.session_state.results_summary)
 
 st.markdown("---")
-st.caption("Sviluppato con Vertex AI Gemini e Streamlit.")
+st.caption(f"Sviluppato con Vertex AI ({TARGET_GEMINI_MODEL}) e Streamlit.")
