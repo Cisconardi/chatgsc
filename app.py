@@ -34,10 +34,10 @@ try:
         ]
         all_required_secrets_present = all(key in st.secrets for key in required_secrets)
 
-        gcp_sa_json_str = None
+        gcp_sa_json_str = None # Inizializza a None
 
         if all_required_secrets_present:
-            if hasattr(st, 'sidebar') and st.sidebar: # Assicura che la sidebar sia pronta
+            if hasattr(st, 'sidebar') and st.sidebar: 
                  st.sidebar.info("Tentativo di costruire credenziali da secrets individuali.")
             
             gcp_credentials_dict = {}
@@ -57,7 +57,7 @@ try:
                      value_ud = str(value_ud)
                  gcp_credentials_dict["universe_domain"] = value_ud
             
-            gcp_sa_json_str = json.dumps(gcp_credentials_dict)
+            gcp_sa_json_str = json.dumps(gcp_credentials_dict) # Questo produce una stringa JSON
 
         elif "GCP_SERVICE_ACCOUNT_JSON" in st.secrets and st.secrets["GCP_SERVICE_ACCOUNT_JSON"]:
             if hasattr(st, 'sidebar') and st.sidebar:
@@ -66,29 +66,41 @@ try:
             gcp_sa_json_value = st.secrets["GCP_SERVICE_ACCOUNT_JSON"]
             
             if isinstance(gcp_sa_json_value, str):
+                # Se è già una stringa, si assume sia un JSON valido o da validare
                 gcp_sa_json_str = gcp_sa_json_value
+                try:
+                    json.loads(gcp_sa_json_str) # Valida se la stringa è un JSON corretto
+                except json.JSONDecodeError as json_err:
+                    error_message = f"Il secret GCP_SERVICE_ACCOUNT_JSON (fornito come stringa) non è JSON valido: {json_err}. Contenuto (prime 200 chars): {gcp_sa_json_str[:200]}..."
+                    if hasattr(st, 'sidebar') and st.sidebar:
+                        st.sidebar.error(error_message)
+                    raise ValueError(error_message) from json_err
+            elif isinstance(gcp_sa_json_value, dict): # AttrDict è una sottoclasse di dict
+                # Se è un dizionario/AttrDict (es. da una tabella TOML), serializzalo in una stringa JSON
+                if hasattr(st, 'sidebar') and st.sidebar:
+                    st.sidebar.warning(f"Il secret GCP_SERVICE_ACCOUNT_JSON era un dizionario/AttrDict (tipo: {type(gcp_sa_json_value)}). Convertito in stringa JSON.")
+                gcp_sa_json_str = json.dumps(dict(gcp_sa_json_value)) # Converte AttrDict in dict, poi in stringa JSON
             else:
+                # Tipo inaspettato, prova a convertirlo in stringa e spera sia un JSON
                 if hasattr(st, 'sidebar') and st.sidebar:
-                    st.sidebar.warning(f"Il secret GCP_SERVICE_ACCOUNT_JSON non era una stringa (tipo: {type(gcp_sa_json_value)}). Tentativo di conversione a stringa.")
+                    st.sidebar.warning(f"Il secret GCP_SERVICE_ACCOUNT_JSON non era né stringa né dizionario (tipo: {type(gcp_sa_json_value)}). Tentativo di conversione diretta a stringa e validazione JSON.")
                 gcp_sa_json_str = str(gcp_sa_json_value)
-
-            try:
-                json.loads(gcp_sa_json_str) 
-            except json.JSONDecodeError as json_err:
-                error_message = f"Il contenuto di GCP_SERVICE_ACCOUNT_JSON non è una stringa JSON valida dopo la conversione: {json_err}. Contenuto (prime 200 chars): {gcp_sa_json_str[:200]}..."
-                if hasattr(st, 'sidebar') and st.sidebar:
-                    st.sidebar.error(error_message)
-                raise ValueError(error_message) from json_err
+                try:
+                    json.loads(gcp_sa_json_str) # Valida
+                except json.JSONDecodeError as json_err:
+                    error_message = f"Il secret GCP_SERVICE_ACCOUNT_JSON (convertito da tipo sconosciuto {type(gcp_sa_json_value)}) non è JSON valido: {json_err}. Contenuto (prime 200 chars): {gcp_sa_json_str[:200]}..."
+                    if hasattr(st, 'sidebar') and st.sidebar:
+                        st.sidebar.error(error_message)
+                    raise ValueError(error_message) from json_err
         
-        if gcp_sa_json_str:
+        if gcp_sa_json_str is not None: # Assicura che gcp_sa_json_str sia stato impostato
             with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_json_file:
-                temp_json_file.write(gcp_sa_json_str) # gcp_sa_json_str DEVE essere una stringa qui
+                temp_json_file.write(gcp_sa_json_str) # Ora gcp_sa_json_str dovrebbe essere sempre una stringa JSON
                 _temp_gcp_creds_file_path = temp_json_file.name
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _temp_gcp_creds_file_path
             if hasattr(st, 'sidebar') and st.sidebar:
                  st.sidebar.success("Credenziali GCP elaborate e file temporaneo creato.")
         else:
-            # Nessun metodo di secrets ha funzionato o i secrets necessari non sono presenti
             missing_keys_str = ""
             if not all_required_secrets_present and not ("GCP_SERVICE_ACCOUNT_JSON" in st.secrets and st.secrets["GCP_SERVICE_ACCOUNT_JSON"]):
                  missing_keys = [key for key in required_secrets if key not in st.secrets]
@@ -97,11 +109,10 @@ try:
             message = (
                 "Credenziali GCP non configurate correttamente. "
                 "Assicurati che tutti i campi del JSON dell'account di servizio siano definiti come secrets individuali, "
-                f"oppure fornisci un singolo secret 'GCP_SERVICE_ACCOUNT_JSON'.{missing_keys_str}"
+                f"oppure fornisci un singolo secret 'GCP_SERVICE_ACCOUNT_JSON' come stringa JSON o tabella TOML.{missing_keys_str}"
             )
             if hasattr(st, 'sidebar') and st.sidebar:
                 st.sidebar.error(message)
-
 
     elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         if hasattr(st, 'sidebar') and st.sidebar:
@@ -114,12 +125,9 @@ try:
                 "Per lo sviluppo locale, imposta la variabile d'ambiente GOOGLE_APPLICATION_CREDENTIALS."
             )
 except Exception as e:
-    # Questo cattura qualsiasi eccezione durante il setup delle credenziali, inclusa la ValueError sollevata sopra
     error_msg_setup = f"Errore durante il setup delle credenziali GCP: {e}"
     if hasattr(st, 'sidebar') and st.sidebar:
         st.sidebar.error(error_msg_setup)
-    # Potresti voler sollevare nuovamente l'eccezione o uscire se le credenziali sono fondamentali
-    # raise # Rimuovi il commento se vuoi che l'app si fermi qui in caso di errore grave di credenziali
 # --- Fine Setup Credenziali GCP ---
 
 
@@ -130,7 +138,7 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
     Recupera lo schema delle tabelle specificate da BigQuery e lo formatta per il prompt LLM.
     table_names_str: Una stringa di nomi di tabelle separati da virgola.
     """
-    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): # Controllo aggiuntivo
+    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
         st.error("Le credenziali GCP non sono state caricate. Impossibile procedere con get_table_schema_for_prompt.")
         return None
     if not project_id or not dataset_id or not table_names_str:
