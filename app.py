@@ -60,9 +60,8 @@ try:
                 try:
                     json.loads(gcp_sa_json_str) 
                 except json.JSONDecodeError as json_err:
-                    # Le notifiche di errore principali rimangono, ma non nella sidebar
                     st.error(f"Il secret GCP_SERVICE_ACCOUNT_JSON (stringa) non è JSON valido: {json_err}.")
-                    gcp_sa_json_str = None # Impedisce l'uso di JSON non valido
+                    gcp_sa_json_str = None 
             elif hasattr(gcp_sa_json_value, 'items') and callable(getattr(gcp_sa_json_value, 'items')):
                 try:
                     gcp_sa_json_str = json.dumps(dict(gcp_sa_json_value)) 
@@ -82,17 +81,7 @@ try:
                 temp_json_file.write(gcp_sa_json_str) 
                 _temp_gcp_creds_file_path = temp_json_file.name
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _temp_gcp_creds_file_path
-        # else:
-            # Silenziosamente non imposta le credenziali se la configurazione dei secret non è valida/completa
-            # L'utente vedrà errori più avanti se tenta operazioni GCP
-            # pass
 
-    # elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        # Non fare nulla, usa le credenziali d'ambiente esistenti
-        # pass
-    # else:
-        # Nessuna credenziale configurata, gli errori appariranno durante le operazioni GCP
-        # pass
 except Exception as e:
     st.error(f"Errore critico durante il setup delle credenziali GCP: {e}")
 # --- Fine Setup Credenziali GCP ---
@@ -207,7 +196,6 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
         
         if not response.candidates or not response.candidates[0].content.parts:
             st.error("Il modello non ha restituito una risposta valida.")
-            # st.write("Risposta grezza del modello:", response) # Rimosso per pulizia UI
             return None
 
         sql_query = response.candidates[0].content.parts[0].text.strip()
@@ -297,46 +285,49 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
 st.title("💬 Conversa con i tuoi dati di Google Search Console")
 st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati in BigQuery. L'AI la tradurrà in SQL!")
 
+# Se l'errore di sintassi persiste, il problema potrebbe essere prima di questa sezione.
+# Controllare attentamente TUTTO il codice precedente per parentesi, [], {} non chiuse.
 with st.expander("ℹ️ Istruzioni per la Configurazione Iniziale", expanded=False):
-    st.markdown("""
-    Per utilizzare questa applicazione, assicurati di aver completato i seguenti passaggi:
+    st.markdown(
+        """
+Per utilizzare questa applicazione, assicurati di aver completato i seguenti passaggi:
 
-    1.  **Esportazione Dati GSC in BigQuery:**
-        * Configura l'esportazione dei dati di Google Search Console verso un dataset BigQuery nel tuo progetto Google Cloud.
-        * [Guida ufficiale Google per l'esportazione GSC a BigQuery](https://support.google.com/webmasters/answer/12918484).
+1.  **Esportazione Dati GSC in BigQuery:**
+    * Configura l'esportazione dei dati di Google Search Console verso un dataset BigQuery nel tuo progetto Google Cloud.
+    * [Guida ufficiale Google per l'esportazione GSC a BigQuery](https://support.google.com/webmasters/answer/12918484).
 
-    2.  **Creazione Account di Servizio GCP:**
-        * Nel tuo progetto Google Cloud, vai su "IAM e amministrazione" > "Account di servizio".
-        * Crea un nuovo account di servizio (es. `gsc-chatbot-sa`).
-        * Assegna i seguenti ruoli minimi a questo account di servizio sul progetto:
-            * `Vertex AI User` (per accedere ai modelli Gemini)
-            * `BigQuery Data Viewer` (per leggere dati e metadati delle tabelle)
-            * `BigQuery Job User` (per eseguire query)
-        * Crea una chiave JSON per questo account di servizio e scaricala.
+2.  **Creazione Account di Servizio GCP:**
+    * Nel tuo progetto Google Cloud, vai su "IAM e amministrazione" > "Account di servizio".
+    * Crea un nuovo account di servizio (es. `gsc-chatbot-sa`).
+    * Assegna i seguenti ruoli minimi a questo account di servizio sul progetto:
+        * `Vertex AI User` (per accedere ai modelli Gemini)
+        * `BigQuery Data Viewer` (per leggere dati e metadati delle tabelle)
+        * `BigQuery Job User` (per eseguire query)
+    * Crea una chiave JSON per questo account di servizio e scaricala.
 
-    3.  **Configurazione Secrets su Streamlit Cloud:**
-        * Se stai deployando su Streamlit Community Cloud, vai nelle impostazioni della tua app > "Secrets".
-        * Aggiungi i campi del file JSON della chiave dell'account di servizio come secrets individuali (es. `type = "service_account"`, `project_id = "..."`, `private_key = "..."`, ecc.). **Assicurati che la `private_key` sia inserita correttamente, includendo i caratteri di newline `\\n` se copi da un JSON su una riga, o usando le virgolette triple `'''...'''` se copi una chiave multi-linea.**
-        * *Alternativa:* Puoi aggiungere un singolo secret chiamato `GCP_SERVICE_ACCOUNT_JSON` il cui valore è l'INTERO contenuto del file JSON della chiave (racchiuso tra triple virgolette `"""..."""`). L'app proverà prima a usare i secrets individuali.
+3.  **Configurazione Secrets su Streamlit Cloud:**
+    * Se stai deployando su Streamlit Community Cloud, vai nelle impostazioni della tua app > "Secrets".
+    * Aggiungi i campi del file JSON della chiave dell'account di servizio come secrets individuali (es. `type = "service_account"`, `project_id = "..."`, `private_key = "..."`, ecc.). **Assicurati che la `private_key` sia inserita correttamente, includendo i caratteri di newline `\\n` se copi da un JSON su una riga, o usando le virgolette triple `'''...'''` se copi una chiave multi-linea.**
+    * *Alternativa:* Puoi aggiungere un singolo secret chiamato `GCP_SERVICE_ACCOUNT_JSON` il cui valore è l'INTERO contenuto del file JSON della chiave (racchiuso tra triple virgolette `"""..."""`). L'app proverà prima a usare i secrets individuali.
 
-    4.  **Abilitazione API Necessarie:**
-        * Nel tuo progetto Google Cloud, assicurati che le seguenti API siano abilitate:
-            * `Vertex AI API`
-            * `BigQuery API`
+4.  **Abilitazione API Necessarie:**
+    * Nel tuo progetto Google Cloud, assicurati che le seguenti API siano abilitate:
+        * `Vertex AI API`
+        * `BigQuery API`
 
-    5.  **Configurazione Parametri App (Sidebar):**
-        * Inserisci l'**ID del tuo Progetto Google Cloud** (quello contenente i dati BigQuery e dove usare Vertex AI).
-        * Specifica la **Location Vertex AI** (es. `europe-west1`, `us-central1`). Assicurati che il modello `gemini-2.0-flash-001` sia disponibile in questa regione per il tuo progetto.
-        * Inserisci l'**ID del Dataset BigQuery** dove hai esportato i dati GSC.
-        * Fornisci i **Nomi delle Tabelle GSC** (separate da virgola) che vuoi interrogare (es. `searchdata_url_impression`, `searchdata_site_impression`).
+5.  **Configurazione Parametri App (Sidebar):**
+    * Inserisci l'**ID del tuo Progetto Google Cloud** (quello contenente i dati BigQuery e dove usare Vertex AI).
+    * Specifica la **Location Vertex AI** (es. `europe-west1`, `us-central1`). Assicurati che il modello `gemini-2.0-flash-001` sia disponibile in questa regione per il tuo progetto.
+    * Inserisci l'**ID del Dataset BigQuery** dove hai esportato i dati GSC.
+    * Fornisci i **Nomi delle Tabelle GSC** (separate da virgola) che vuoi interrogare (es. `searchdata_url_impression`, `searchdata_site_impression`).
 
-    Una volta configurato tutto, potrai fare domande sui tuoi dati!
-    """)
+Una volta configurato tutto, potrai fare domande sui tuoi dati!
+        """
+    )
 
 
 with st.sidebar:
     st.header("⚙️ Configurazione")
-    # Rimosse le notifiche di stato delle credenziali dalla sidebar
     
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
                                    value="nlp-project-448915", 
@@ -384,14 +375,9 @@ if gcp_project_id and bq_dataset_id and bq_table_names_str:
             st.session_state.table_schema_for_prompt = get_table_schema_for_prompt(gcp_project_id, bq_dataset_id, bq_table_names_str)
         st.session_state.current_schema_config_key = schema_config_key
         if st.session_state.table_schema_for_prompt:
-            # Rimosso st.sidebar.success("Schema tabelle caricato!")
-            with st.sidebar.expander("Vedi Schema Caricato per Prompt (Debug)", expanded=False): # Messo come debug
+            with st.sidebar.expander("Vedi Schema Caricato per Prompt (Debug)", expanded=False): 
                 st.code(st.session_state.table_schema_for_prompt, language='text')
-        # else:
-            # L'errore viene già mostrato da get_table_schema_for_prompt nella UI principale
-            # pass 
 elif not (gcp_project_id and bq_dataset_id and bq_table_names_str) and any([gcp_project_id, bq_dataset_id, bq_table_names_str]): 
-    # Rimosso st.sidebar.warning
     pass
 
 
