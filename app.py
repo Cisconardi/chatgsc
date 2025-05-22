@@ -457,7 +457,7 @@ if submit_button and user_question:
                         st.session_state.query_results, user_question
                     )
                 if st.session_state.results_summary:
-                    st.subheader("📝 Risposta da ChatGSC:")
+                    st.subheader("🤖💬:")
                     st.markdown(st.session_state.results_summary)
                 elif st.session_state.query_results.empty: 
                      st.info("🤖💬 La query non ha restituito risultati da riassumere.")
