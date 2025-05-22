@@ -226,6 +226,7 @@ def summarize_results_with_llm(project_id: str, location: str, model_name: str, 
         if len(results_df) > 20:
             results_sample_text += f"\n... e altre {len(results_df)-20} righe."
         
+        # Prompt migliorato per il grassetto
         prompt = f"""
 Data la seguente domanda dell'utente:
 "{original_question}"
@@ -235,7 +236,12 @@ E i seguenti risultati ottenuti da una query SQL (massimo 20 righe mostrate se p
 
 Fornisci un breve riassunto conciso e in linguaggio naturale di questi risultati, rispondendo direttamente alla domanda originale dell'utente.
 Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non significativi, indicalo gentilmente.
-**Importante: Metti in grassetto (usando la sintassi Markdown `**testo in grassetto**`) i dati numerici chiave, le date importanti, o i termini più rilevanti nel tuo riassunto per evidenziarli.**
+**Importante: Nel tuo riassunto, metti in grassetto (usando la sintassi Markdown `**testo in grassetto**`) i seguenti tipi di informazioni per evidenziarli:**
+- **Metriche e KPI specifici** (es. `**1.234 clic**`, `**CTR del 5.6%**`, `**posizione media 3.2**`)
+- **Date o periodi di tempo rilevanti** (es. `**ieri**`, `**la scorsa settimana**`, `**dal 1 Maggio al 15 Maggio**`)
+- **Trend numerici significativi** (es. `**un aumento del 20%**`, `**un calo di 500 impressioni**`)
+- **Trend testuali o qualitativi importanti** (es. `**un notevole miglioramento**`, `**performance stabile**`, `**peggioramento significativo**`)
+- **Nomi di query, pagine o segmenti specifici se sono il focus della risposta.**
 """
         generation_config = GenerationConfig(temperature=0.5, max_output_tokens=512)
         response = model.generate_content(prompt, generation_config=generation_config)
@@ -468,7 +474,6 @@ if submit_button and user_question:
                 
                 if st.session_state.results_summary and st.session_state.results_summary != "Non ci sono dati da riassumere.":
                     with st.chat_message("ai", avatar="🤖"):
-                        # Applica lo stile per ingrandire il testo e le emoji nel testo
                         styled_summary = f"<div style='font-size: 1.6em;'>{st.session_state.results_summary}</div>"
                         st.markdown(styled_summary, unsafe_allow_html=True)
                 elif st.session_state.query_results.empty or st.session_state.results_summary == "Non ci sono dati da riassumere.": 
