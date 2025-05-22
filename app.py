@@ -99,7 +99,7 @@ TARGET_GEMINI_MODEL = "gemini-2.0-flash-001"
 PRIVACY_POLICY_TEXT = """
 **Informativa sulla Privacy per ChatGSC**
 
-**Ultimo aggiornamento:** [INSERISCI DATA QUI]
+**Ultimo aggiornamento:** 22/05/2025
 
 Benvenuto in ChatGSC! La tua privacy è importante per noi. Questa Informativa sulla Privacy spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le tue informazioni quando utilizzi la nostra applicazione ChatGSC per interagire con i tuoi dati di Google Search Console tramite Google BigQuery e Vertex AI, utilizzando l'autenticazione OAuth 2.0 di Google.
 
@@ -149,7 +149,7 @@ Potremmo aggiornare questa Informativa sulla Privacy di tanto in tanto. Ti infor
 **8. Contattaci**
 
 Se hai domande su questa Informativa sulla Privacy, contattaci a:
-[LA TUA EMAIL DI CONTATTO O METODO DI CONTATTO]
+info@francisconardi.it
 
 ---
 *Nota Importante: Questa è una bozza generica. Dovrai adattarla specificamente alle funzionalità della tua app (ad esempio, se memorizzi la cronologia delle chat, come gestisci i token di aggiornamento OAuth, ecc.) e assicurarti che sia conforme alle leggi sulla privacy come il GDPR (se applicabile).*
