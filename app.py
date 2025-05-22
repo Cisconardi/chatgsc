@@ -17,7 +17,7 @@ st.markdown("""
 <style>
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] p,
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] li {
-        font-size: 1.75em !important; 
+        font-size: 3em !important; 
     }
 </style>
 """, unsafe_allow_html=True)
