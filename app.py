@@ -27,19 +27,29 @@ def _cleanup_temp_creds_file():
 
 atexit.register(_cleanup_temp_creds_file)
 
-def load_credentials_from_uploaded_file(uploaded_file):
+def reset_config_and_creds_state():
+    """Resetta lo stato relativo alle credenziali e alla configurazione applicata."""
     global _temp_gcp_creds_file_path
-    # Pulisci vecchie credenziali temporanee se presenti e la variabile d'ambiente
+    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+        del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
     if _temp_gcp_creds_file_path and os.path.exists(_temp_gcp_creds_file_path):
         try:
             os.remove(_temp_gcp_creds_file_path)
         except Exception:
             pass
-    _temp_gcp_creds_file_path = None # Resetta il percorso
-    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
-        del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
-    st.session_state.uploaded_project_id = None # Resetta project_id da upload precedente
+    _temp_gcp_creds_file_path = None
+    st.session_state.credentials_successfully_loaded_by_app = False
+    st.session_state.uploaded_project_id = None
+    st.session_state.last_uploaded_file_id_processed_successfully = None
+    st.session_state.config_applied_successfully = False # Resetta anche lo stato di configurazione applicata
+    st.session_state.table_schema_for_prompt = "" # Pulisce lo schema caricato
+    st.session_state.current_schema_config_key = "" # Forza ricaricamento schema
+    print("DEBUG: Stato credenziali e configurazione resettato.")
 
+
+def load_credentials_from_uploaded_file(uploaded_file):
+    global _temp_gcp_creds_file_path
+    reset_config_and_creds_state() # Resetta sempre prima di caricare nuove credenziali
 
     if uploaded_file is not None:
         try:
@@ -47,13 +57,11 @@ def load_credentials_from_uploaded_file(uploaded_file):
             
             try:
                 creds_dict = json.loads(gcp_sa_json_str)
-                # Estrai project_id e salvalo in session_state
                 st.session_state.uploaded_project_id = creds_dict.get("project_id")
                 if not st.session_state.uploaded_project_id:
                     st.warning("🤖💬 Il file JSON caricato non contiene un 'project_id'. Sarà necessario inserirlo manualmente.")
             except json.JSONDecodeError as json_err:
                 st.error(f"🤖💬 Il file caricato non contiene un JSON valido: {json_err}.")
-                st.session_state.uploaded_project_id = None
                 return False
 
             with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_json_file:
@@ -62,18 +70,13 @@ def load_credentials_from_uploaded_file(uploaded_file):
             
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _temp_gcp_creds_file_path
             print(f"DEBUG: Credenziali caricate da file upload: {_temp_gcp_creds_file_path}")
-            return True # Indica successo
+            st.session_state.credentials_successfully_loaded_by_app = True
+            st.session_state.last_uploaded_file_id_processed_successfully = uploaded_file.file_id
+            return True
         except Exception as e:
             st.error(f"🤖💬 Errore durante il caricamento del file delle credenziali: {e}")
-            st.session_state.uploaded_project_id = None
-            # Assicurati che l'env var sia pulita in caso di errore dopo averla impostata
-            if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
-                del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+            reset_config_and_creds_state() # Assicura pulizia in caso di errore
             return False
-    # Se uploaded_file è None, assicurati che lo stato rifletta questo
-    st.session_state.uploaded_project_id = None
-    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ: # Pulisci se il file è stato rimosso
-        del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
     return False
 
 # --- Fine Setup Credenziali GCP ---
@@ -84,11 +87,8 @@ TARGET_GEMINI_MODEL = "gemini-2.0-flash-001"
 # --- Funzioni Core ---
 
 def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_str: str) -> str | None:
-    """
-    Recupera lo schema delle tabelle specificate da BigQuery e lo formatta per il prompt LLM.
-    """
     if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
-        st.error("🤖💬 Le credenziali GCP non sono state caricate. Carica il file JSON nella sidebar.")
+        st.error("🤖💬 Le credenziali GCP non sono state caricate. Carica il file JSON e applica la configurazione.")
         return None
     if not project_id or not dataset_id or not table_names_str:
         st.error("🤖💬 ID Progetto, ID Dataset e Nomi Tabelle sono necessari per recuperare lo schema.")
@@ -139,7 +139,6 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
 
 
 def generate_sql_from_question(project_id: str, location: str, model_name: str, question: str, table_schema_prompt: str, few_shot_examples_str: str) -> str | None:
-    """Genera una query SQL da una domanda in linguaggio naturale utilizzando Vertex AI."""
     if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
         st.error("🤖💬 Le credenziali GCP non sono state caricate. Impossibile procedere con la generazione SQL.")
         return None
@@ -150,7 +149,6 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
     try:
         vertexai.init(project=project_id, location=location) 
         model = GenerativeModel(model_name)
-
         prompt_parts = [
             "Sei un esperto assistente AI che traduce domande in linguaggio naturale in query SQL per Google BigQuery,",
             "specifiche per i dati di Google Search Console. Le date nelle domande (es. 'ieri', 'la scorsa settimana') devono essere interpretate",
@@ -164,52 +162,36 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
             "Rispondi SOLO con la query SQL. Non aggiungere spiegazioni come 'Ecco la query SQL:', commenti SQL (--) o ```sql.",
             "Se la domanda non può essere tradotta in una query SQL basata sullo schema fornito, rispondi con 'ERRORE: Domanda non traducibile'.",
         ]
-
         if few_shot_examples_str and few_shot_examples_str.strip(): 
             prompt_parts.append("\nEcco alcuni esempi:")
             prompt_parts.append(few_shot_examples_str)
-
         prompt_parts.extend([
             f"\nDomanda dell'utente: \"{question}\"",
             "SQL:"
         ])
-        
         full_prompt = "\n".join(prompt_parts)
         st.session_state.last_prompt = full_prompt
-
-        generation_config = GenerationConfig(
-            temperature=0.1, 
-            max_output_tokens=1024 
-        )
-
+        generation_config = GenerationConfig(temperature=0.1, max_output_tokens=1024)
         response = model.generate_content(full_prompt, generation_config=generation_config)
         
         if not response.candidates or not response.candidates[0].content.parts:
             st.error("🤖💬 Il modello non ha restituito una risposta valida.")
             return None
-
         sql_query = response.candidates[0].content.parts[0].text.strip()
-
         if "ERRORE:" in sql_query:
             st.error(f"🤖💬 Il modello ha indicato un errore: {sql_query}")
             return None
-        
         sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
-
         if not sql_query.lower().startswith("select") and not sql_query.lower().startswith("with"):
             st.warning(f"La risposta del modello non sembra una query SELECT/WITH valida: {sql_query}. Tentativo di esecuzione comunque.")
-        
         return sql_query
-
     except Exception as e:
         st.error(f"🤖💬 Errore durante la chiamata a Vertex AI: {e}") 
         if 'last_prompt' in st.session_state:
             st.expander("Ultimo Prompt Inviato (Debug)").code(st.session_state.last_prompt, language='text')
         return None
 
-
 def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | None:
-    """Esegue una query SQL su BigQuery e restituisce i risultati come DataFrame Pandas."""
     if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         st.error("Le credenziali GCP non sono state caricate. Impossibile procedere con l'esecuzione della query.")
         return None
@@ -221,7 +203,7 @@ def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | No
         st.info(f"Esecuzione query su BigQuery...")
         query_job = client.query(sql_query)
         results_df = query_job.to_dataframe() 
-        st.success(f"🤖💬 Query completata! {len(results_df)} righe restituite.")
+        st.success(f"�💬 Query completata! {len(results_df)} righe restituite.")
         return results_df
     except Exception as e:
         st.error(f"🤖💬 Errore durante l'esecuzione della query BigQuery: {e}")
@@ -229,7 +211,6 @@ def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | No
         return None
 
 def summarize_results_with_llm(project_id: str, location: str, model_name: str, results_df: pd.DataFrame, original_question: str) -> str | None:
-    """Riassume i risultati della query in linguaggio naturale utilizzando Vertex AI."""
     if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         st.error("🤖💬 Le credenziali GCP non sono state caricate. Impossibile procedere con il riassunto.")
         return None
@@ -238,45 +219,35 @@ def summarize_results_with_llm(project_id: str, location: str, model_name: str, 
     if not all([project_id, location, model_name]):
         st.error("🤖💬 Mancano alcuni parametri per la generazione del riassunto (progetto, location, modello).")
         return None
-
     try:
         vertexai.init(project=project_id, location=location) 
         model = GenerativeModel(model_name)
-
         results_sample_text = results_df.head(20).to_string(index=False)
         if len(results_df) > 20:
             results_sample_text += f"\n... e altre {len(results_df)-20} righe."
-
         prompt = f"""
 Data la seguente domanda dell'utente:
 "{original_question}"
-
 E i seguenti risultati ottenuti da una query SQL (massimo 20 righe mostrate se più lunghe):
 {results_sample_text}
-
 Fornisci un breve riassunto conciso e in linguaggio naturale di questi risultati, rispondendo direttamente alla domanda originale dell'utente.
 Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non significativi, indicalo gentilmente.
 """
         generation_config = GenerationConfig(temperature=0.5, max_output_tokens=512)
         response = model.generate_content(prompt, generation_config=generation_config)
-        
         if not response.candidates or not response.candidates[0].content.parts:
              st.warning("Il modello non ha restituito un riassunto valido.")
              return "Non è stato possibile generare un riassunto."
-
         return response.candidates[0].content.parts[0].text.strip()
-
     except Exception as e:
         st.error(f"Errore durante la generazione del riassunto: {e}")
         return "Errore nella generazione del riassunto."
-
 
 # --- Interfaccia Streamlit ---
 st.title("Ciao, sono ChatGSC 🤖💬")
 st.caption("Fammi una domanda sui tuoi dati di Google Search Console archiviati in BigQuery. La mia AI la tradurrà in SQL e ti risponderò!")
 
 expander_title_text = "ℹ️ Istruzioni per la Configurazione Iniziale"
-
 with st.expander(expander_title_text, expanded=False):
     st.write("Per utilizzare questa applicazione, assicurati di aver completato i seguenti passaggi:")
     st.write("---") 
@@ -284,7 +255,6 @@ with st.expander(expander_title_text, expanded=False):
     st.write("- Configura l'esportazione dei dati di Google Search Console verso un dataset BigQuery nel tuo progetto Google Cloud.")
     st.write("- [Guida ufficiale Google per l'esportazione GSC a BigQuery](https://support.google.com/webmasters/answer/12918484).")
     st.write("---")
-
     st.subheader("2. Creazione Account di Servizio GCP e Download Chiave JSON:")
     st.write('- Nel tuo progetto Google Cloud, vai su "IAM e amministrazione" > "Account di servizio".')
     st.write("- Crea un nuovo account di servizio (es. `gsc-chatbot-sa`).")
@@ -294,26 +264,25 @@ with st.expander(expander_title_text, expanded=False):
     st.write("  - `BigQuery Job User` (per eseguire query)")
     st.write("- Crea una chiave JSON per questo account di servizio e **scaricala sul tuo computer.**")
     st.write("---")
-
     st.subheader("3. Caricamento File Credenziali (nella Sidebar):")
     st.write("- Nella sidebar di questa applicazione, troverai una sezione per caricare il file JSON della chiave dell'account di servizio che hai scaricato al punto 2.")
     st.write("- Carica il file per autenticare l'applicazione.")
     st.write("---")
-    
     st.subheader("4. Abilitazione API Necessarie:")
     st.write("- Nel tuo progetto Google Cloud, assicurati che le seguenti API siano abilitate:")
     st.write("  - `Vertex AI API`")
     st.write("  - `BigQuery API`")
     st.write("---")
-
     st.subheader("5. Configurazione Parametri App (Sidebar):")
     st.write("- Inserisci l'**ID del tuo Progetto Google Cloud** (quello contenente i dati BigQuery e dove usare Vertex AI). Se hai caricato un file di credenziali, questo campo potrebbe essere precompilato.")
     st.write(f"- Specifica la **Location Vertex AI** (es. `europe-west1`, `us-central1`). Assicurati che il modello `{TARGET_GEMINI_MODEL}` sia disponibile in questa regione per il tuo progetto.")
     st.write("- Inserisci l'**ID del Dataset BigQuery** dove hai esportato i dati GSC.")
     st.write("- Fornisci i **Nomi delle Tabelle GSC** (separate da virgola) che vuoi interrogare (es. `searchdata_url_impression`, `searchdata_site_impression`).")
     st.write("---")
+    st.subheader("6. Applica Configurazione (nella Sidebar):")
+    st.write("- Dopo aver caricato le credenziali e inserito tutti i parametri, premi il pulsante **'Applica Configurazione'** nella sidebar per attivare l'applicazione.")
+    st.write("---")
     st.write("Una volta configurato tutto, potrai fare domande sui tuoi dati!")
-
 
 # Inizializza st.session_state se non esiste
 if 'uploaded_project_id' not in st.session_state:
@@ -332,103 +301,130 @@ if 'current_schema_config_key' not in st.session_state:
     st.session_state.current_schema_config_key = ""
 if 'credentials_successfully_loaded_by_app' not in st.session_state:
     st.session_state.credentials_successfully_loaded_by_app = False
-if 'last_uploaded_file_id_processed_successfully' not in st.session_state: # Per tracciare il file specifico processato con successo
+if 'last_uploaded_file_id_processed_successfully' not in st.session_state: 
     st.session_state.last_uploaded_file_id_processed_successfully = None
+if 'config_applied_successfully' not in st.session_state: # Nuovo stato per il pulsante Applica
+    st.session_state.config_applied_successfully = False
+
+def on_config_change():
+    """Chiamato quando un input di configurazione cambia, per resettare lo stato 'config_applied'."""
+    st.session_state.config_applied_successfully = False
+    st.session_state.current_schema_config_key = "" # Forza ricaricamento schema se la config cambia
+    print("DEBUG: Configurazione cambiata, config_applied_successfully resettato.")
 
 
 with st.sidebar:
     st.header("⚙️ Configurazione")
 
-    st.subheader("1. Carica File Credenziali Google Cloud Platform (JSON)")
+    st.subheader("1. Carica File Credenziali GCP (JSON)")
     uploaded_credential_file = st.file_uploader(
         "Seleziona il file JSON della chiave del tuo account di servizio GCP", 
         type="json", 
-        key="credential_uploader" 
+        key="credential_uploader",
+        on_change=on_config_change # Se il file cambia, la config non è più valida
     )
 
     if uploaded_credential_file is not None:
-        current_file_unique_id = uploaded_credential_file.file_id # Usa file_id per unicità
-        
-        # Processa solo se è un file nuovo o se il precedente tentativo con questo file è fallito
-        # O se le credenziali non sono attualmente considerate caricate con successo
+        current_file_unique_id = uploaded_credential_file.file_id
         if st.session_state.last_uploaded_file_id_processed_successfully != current_file_unique_id or \
            not st.session_state.credentials_successfully_loaded_by_app:
-            
             if load_credentials_from_uploaded_file(uploaded_credential_file):
                 st.session_state.credentials_successfully_loaded_by_app = True
                 st.session_state.last_uploaded_file_id_processed_successfully = current_file_unique_id 
-                st.success("File credenziali caricato e processato!")
+                # Non mostrare st.success qui, lo stato verrà mostrato sotto
                 st.rerun() 
             else:
                 st.session_state.credentials_successfully_loaded_by_app = False
-                # Non impostare last_uploaded_file_id_processed_successfully qui se fallisce, 
-                # per permettere un nuovo tentativo con lo stesso file se l'utente lo desidera
-                # (anche se st.rerun potrebbe non essere ideale in caso di fallimento continuo)
                 st.error("Errore nel processare il file delle credenziali.")
-    
-    elif uploaded_credential_file is None:
-        # Il file è stato rimosso o non è mai stato caricato
-        if st.session_state.credentials_successfully_loaded_by_app: # Se prima era caricato e ora è rimosso
-            print("DEBUG: File uploader svuotato, resetto stato credenziali.")
-            if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
-                del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
-            if _temp_gcp_creds_file_path and os.path.exists(_temp_gcp_creds_file_path):
-                try: os.remove(_temp_gcp_creds_file_path)
-                except: pass
-            st.session_state.credentials_successfully_loaded_by_app = False
-            st.session_state.uploaded_project_id = None
-            st.session_state.last_uploaded_file_id_processed_successfully = None
-            st.rerun()
+    elif uploaded_credential_file is None and st.session_state.credentials_successfully_loaded_by_app:
+        print("DEBUG: File uploader svuotato, resetto stato credenziali.")
+        reset_config_and_creds_state() # Questa funzione ora resetta anche config_applied_successfully
+        st.rerun()
 
-
-    # Logica per mostrare lo stato delle credenziali basata sul caricamento dell'app
+    # Stato credenziali
     if st.session_state.credentials_successfully_loaded_by_app:
-        st.success("🤖💬 Credenziali GCP caricate tramite file e attive.")
+        st.success("🤖💬 Credenziali GCP caricate.")
     else:
-        st.warning("🤖💬 Per favore, carica il file JSON delle credenziali GCP per continuare.")
-
+        st.warning("🤖💬 Carica file credenziali GCP.")
 
     st.divider()
     st.subheader("2. Parametri Query")
     
     default_project_id = st.session_state.get('uploaded_project_id', "example-project-id")
-
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
                                    value=default_project_id, 
-                                   help="Il tuo ID progetto GCP. Verrà precompilato dal file JSON caricato, se possibile.")
-    gcp_location = st.text_input("Location Vertex AI", "europe-west1", help="Es. us-central1, europe-west1. Assicurati che il modello sia disponibile qui.")
+                                   help="ID progetto GCP. Precompilato dal JSON se possibile.",
+                                   on_change=on_config_change)
+    gcp_location = st.text_input("Location Vertex AI", "europe-west1", 
+                                 help="Es. us-central1. Modello deve essere disponibile qui.",
+                                 on_change=on_config_change)
     bq_dataset_id = st.text_input("ID Dataset BigQuery", 
-                                  value="example-dataset-id", 
-                                  help="Il dataset contenente le tabelle GSC.")
+                                  value="example-dataset-id", # Non precompilato automaticamente
+                                  help="Dataset contenente le tabelle GSC.",
+                                  on_change=on_config_change)
     bq_table_names_str = st.text_area(
         "Nomi Tabelle GSC (separate da virgola)", 
         "searchdata_url_impression,searchdata_site_impression", 
-        help="🤖💬 Nomi delle tabelle GSC nel dataset specificato, es. searchdata_site_impression, searchdata_url_impression"
+        help="🤖💬 Nomi tabelle GSC, es. searchdata_site_impression, searchdata_url_impression",
+        on_change=on_config_change
     )
     
     st.markdown(f"ℹ️ Modello AI utilizzato: **{TARGET_GEMINI_MODEL}**.")
-    
     few_shot_examples = "" 
 
     st.divider()
-    enable_summary = st.checkbox("Abilita riassunto LLM dei risultati", value=True)
+    enable_summary = st.checkbox("Abilita riassunto LLM dei risultati", value=True, on_change=on_config_change)
+    
+    st.divider()
+    apply_config_button = st.button("Applica Configurazione", key="apply_config")
+
+    if apply_config_button:
+        all_fields_filled = True
+        if not st.session_state.credentials_successfully_loaded_by_app:
+            st.error("🤖💬 Per favore, carica prima un file di credenziali valido.")
+            all_fields_filled = False
+        if not gcp_project_id:
+            st.error("🤖💬 ID Progetto Google Cloud è obbligatorio.")
+            all_fields_filled = False
+        if not gcp_location:
+            st.error("🤖💬 Location Vertex AI è obbligatoria.")
+            all_fields_filled = False
+        if not bq_dataset_id:
+            st.error("🤖💬 ID Dataset BigQuery è obbligatorio.")
+            all_fields_filled = False
+        if not bq_table_names_str:
+            st.error("🤖💬 Nomi Tabelle GSC sono obbligatori.")
+            all_fields_filled = False
+        
+        if all_fields_filled:
+            st.session_state.config_applied_successfully = True
+            st.session_state.current_schema_config_key = "" # Forza ricaricamento schema
+            st.success("🤖💬 Configurazione applicata! Ora puoi fare domande.")
+            st.rerun() # Rerun per aggiornare lo stato dell'app principale
+        else:
+            st.session_state.config_applied_successfully = False
+    
+    if st.session_state.config_applied_successfully:
+        st.info("Configurazione attiva. Modifica i campi e riapplica se necessario.")
 
 
-if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") and gcp_project_id and bq_dataset_id and bq_table_names_str:
-    schema_config_key = f"{gcp_project_id}_{bq_dataset_id}_{bq_table_names_str}"
-    if st.session_state.current_schema_config_key != schema_config_key:
-        with st.spinner("Recupero schema tabelle da BigQuery..."):
-            st.session_state.table_schema_for_prompt = get_table_schema_for_prompt(gcp_project_id, bq_dataset_id, bq_table_names_str)
-        st.session_state.current_schema_config_key = schema_config_key
-        if st.session_state.table_schema_for_prompt:
-            if hasattr(st, 'sidebar') and st.sidebar:
-                with st.sidebar.expander("Vedi Schema Caricato per Prompt (Debug)", expanded=False): 
-                    st.code(st.session_state.table_schema_for_prompt, language='text')
-elif not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-    pass
-elif not (gcp_project_id and bq_dataset_id and bq_table_names_str) and any([gcp_project_id, bq_dataset_id, bq_table_names_str]): 
-    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") and hasattr(st, 'sidebar') and st.sidebar:
-        st.sidebar.warning("🤖💬 Completa ID Progetto, ID Dataset e Nomi Tabelle per caricare lo schema.")
+# Logica per caricare lo schema solo se la configurazione è stata applicata
+if st.session_state.config_applied_successfully:
+    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") and gcp_project_id and bq_dataset_id and bq_table_names_str:
+        schema_config_key = f"{gcp_project_id}_{bq_dataset_id}_{bq_table_names_str}"
+        if st.session_state.current_schema_config_key != schema_config_key or not st.session_state.table_schema_for_prompt:
+            with st.spinner("Recupero schema tabelle da BigQuery..."):
+                st.session_state.table_schema_for_prompt = get_table_schema_for_prompt(gcp_project_id, bq_dataset_id, bq_table_names_str)
+            st.session_state.current_schema_config_key = schema_config_key
+            if st.session_state.table_schema_for_prompt:
+                if hasattr(st, 'sidebar') and st.sidebar: # Dovrebbe essere sempre vero qui
+                    with st.sidebar.expander("Vedi Schema Caricato per Prompt (Debug)", expanded=False): 
+                        st.code(st.session_state.table_schema_for_prompt, language='text')
+            # else: # L'errore è già gestito da get_table_schema_for_prompt
+            #    st.error("Impossibile caricare lo schema delle tabelle con la configurazione corrente.")
+    # else:
+        # Questo caso dovrebbe essere prevenuto dal pulsante "Applica Configurazione"
+        # st.warning("Mancano parametri per caricare lo schema.")
 
 
 with st.form(key='query_form'):
@@ -436,14 +432,10 @@ with st.form(key='query_form'):
     submit_button = st.form_submit_button(label="Chiedi a ChatGSC 💬")
 
 if submit_button and user_question:
-    gcp_creds_loaded = st.session_state.credentials_successfully_loaded_by_app
-
-    if not gcp_creds_loaded:
-        st.error("🤖💬 Per favore, carica il file JSON delle credenziali GCP nella sidebar.")
-    elif not all([gcp_project_id, gcp_location, bq_dataset_id, bq_table_names_str]):
-        st.error("🤖💬 Per favore, completa la configurazione dei parametri query nella sidebar (ID Progetto, Location, Dataset, Tabelle).")
-    elif not st.session_state.table_schema_for_prompt:
-        st.error("🤖💬 Lo schema delle tabelle non è stato caricato correttamente. Verifica la configurazione e che le credenziali caricate abbiano i permessi necessari.")
+    if not st.session_state.config_applied_successfully:
+        st.error("🤖💬 Per favore, completa e applica la configurazione nella sidebar prima di fare domande.")
+    elif not st.session_state.table_schema_for_prompt: # Ulteriore controllo se lo schema non è stato caricato nonostante config_applied
+        st.error("🤖💬 Lo schema delle tabelle non è disponibile. Verifica la configurazione e i permessi, poi riapplica la configurazione.")
     else:
         st.session_state.sql_query = ""
         st.session_state.query_results = None
@@ -486,22 +478,26 @@ if submit_button and user_question:
                  with st.expander("Debug: Ultimo Prompt Inviato all'LLM per SQL"):
                     st.code(st.session_state.last_prompt, language='text')
 
-elif not submit_button:
-    if st.session_state.sql_query:
-        st.subheader("🔍 Query SQL Generata (Precedente):")
-        st.code(st.session_state.sql_query, language='sql')
-    if st.session_state.query_results is not None:
-        st.subheader("📊 Risultati dalla Query (Precedente):")
-        if st.session_state.query_results.empty:
-            st.info("La query non ha restituito risultati.")
-        else:
-            st.dataframe(st.session_state.query_results)
-    if st.session_state.results_summary:
-        st.subheader("📝 Riassunto dei Risultati (Precedente):")
-        st.markdown(st.session_state.results_summary)
+elif not submit_button: # Mostra risultati precedenti se il form non è stato inviato
+    if st.session_state.config_applied_successfully: # Ma solo se la configurazione è stata applicata
+        if st.session_state.sql_query:
+            st.subheader("🔍 Query SQL Generata (Precedente):")
+            st.code(st.session_state.sql_query, language='sql')
+        if st.session_state.query_results is not None:
+            st.subheader("📊 Risultati dalla Query (Precedente):")
+            if st.session_state.query_results.empty:
+                st.info("La query non ha restituito risultati.")
+            else:
+                st.dataframe(st.session_state.query_results)
+        if st.session_state.results_summary:
+            st.subheader("📝 Riassunto dei Risultati (Precedente):")
+            st.markdown(st.session_state.results_summary)
+    elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): # Se le credenziali sono caricate ma la config non applicata
+        st.info("🤖💬 Completa i parametri nella sidebar e premi 'Applica Configurazione' per iniziare.")
+
 
 st.markdown("---")
-st.markdown( # Corretto il link e rimosso il Markdown interno all'href
+st.markdown(
     """
     <div style="text-align: center; padding: 10px;">
         Made with ❤️ by <a href="[https://www.linkedin.com/in/francisco-nardi-212b338b/](https://www.linkedin.com/in/francisco-nardi-212b338b/)" target="_blank">Francisco Nardi</a>
