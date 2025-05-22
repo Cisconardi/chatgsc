@@ -96,7 +96,7 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
 
     table_names = [name.strip() for name in table_names_str.split(',') if name.strip()]
     if not table_names:
-        st.error("🤖💬 Per favore, fornisci almeno un nome di tabella valido.")
+        st.error("�💬 Per favore, fornisci almeno un nome di tabella valido.")
         return None
     
     try:
@@ -330,9 +330,10 @@ if 'last_prompt' not in st.session_state:
     st.session_state.last_prompt = ""
 if 'current_schema_config_key' not in st.session_state:
     st.session_state.current_schema_config_key = ""
-# Nuovo stato per tracciare se il caricamento è avvenuto con successo in questa sessione
 if 'credentials_successfully_loaded_by_app' not in st.session_state:
     st.session_state.credentials_successfully_loaded_by_app = False
+if 'last_uploaded_file_id' not in st.session_state: # Per tracciare il file specifico
+    st.session_state.last_uploaded_file_id = None
 
 
 with st.sidebar:
@@ -345,33 +346,36 @@ with st.sidebar:
         key="credential_uploader" 
     )
 
-    if uploaded_credential_file:
-        # Processa il file solo se è un nuovo file o se le credenziali non sono già state caricate con successo
-        # Questo previene il riprocessamento ad ogni rerun se lo stesso file è ancora selezionato
-        if not st.session_state.credentials_successfully_loaded_by_app or \
-           st.session_state.get("last_uploaded_file_id") != uploaded_credential_file.id:
+    if uploaded_credential_file is not None:
+        current_file_id = uploaded_credential_file.id
+        # Processa solo se è un file nuovo o se il precedente tentativo con questo file è fallito
+        if st.session_state.last_uploaded_file_id != current_file_id or \
+           not st.session_state.credentials_successfully_loaded_by_app:
             
             if load_credentials_from_uploaded_file(uploaded_credential_file):
                 st.session_state.credentials_successfully_loaded_by_app = True
-                st.session_state.last_uploaded_file_id = uploaded_credential_file.id
+                st.session_state.last_uploaded_file_id = current_file_id # Memorizza l'ID del file processato con successo
                 st.success("File credenziali caricato e processato!")
                 st.rerun() 
             else:
                 st.session_state.credentials_successfully_loaded_by_app = False
-                st.session_state.last_uploaded_file_id = None # Resetta se il caricamento fallisce
+                # Non resettare last_uploaded_file_id qui, per evitare loop se lo stesso file fallisce ripetutamente
+                # Ma assicurati che lo stato di successo sia False
                 st.error("Errore nel processare il file delle credenziali.")
-    elif not uploaded_credential_file and st.session_state.credentials_successfully_loaded_by_app:
-        # Il file è stato rimosso dall'utente dopo un caricamento riuscito
-        if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
-            del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
-        if _temp_gcp_creds_file_path and os.path.exists(_temp_gcp_creds_file_path):
-            try: os.remove(_temp_gcp_creds_file_path)
-            except: pass
-        st.session_state.credentials_successfully_loaded_by_app = False
-        st.session_state.uploaded_project_id = None
-        st.session_state.last_uploaded_file_id = None
-        print("DEBUG: Credenziali e file temporaneo rimossi perché il file è stato deselezionato.")
-        st.rerun()
+    
+    elif uploaded_credential_file is None:
+        # Il file è stato rimosso o non è mai stato caricato
+        if st.session_state.credentials_successfully_loaded_by_app: # Se prima era caricato e ora è rimosso
+            print("DEBUG: File uploader svuotato, resetto stato credenziali.")
+            if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+                del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+            if _temp_gcp_creds_file_path and os.path.exists(_temp_gcp_creds_file_path):
+                try: os.remove(_temp_gcp_creds_file_path)
+                except: pass
+            st.session_state.credentials_successfully_loaded_by_app = False
+            st.session_state.uploaded_project_id = None
+            st.session_state.last_uploaded_file_id = None
+            st.rerun()
 
 
     # Logica per mostrare lo stato delle credenziali basata sul caricamento dell'app
@@ -384,14 +388,15 @@ with st.sidebar:
     st.divider()
     st.subheader("2. Parametri Query")
     
-    default_project_id = st.session_state.get('uploaded_project_id', "nlp-project-448915")
+    # Usa il project_id da session_state se disponibile, altrimenti un placeholder generico
+    default_project_id = st.session_state.get('uploaded_project_id', "example-project-id")
 
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
                                    value=default_project_id, 
                                    help="Il tuo ID progetto GCP. Verrà precompilato dal file JSON caricato, se possibile.")
     gcp_location = st.text_input("Location Vertex AI", "europe-west1", help="Es. us-central1, europe-west1. Assicurati che il modello sia disponibile qui.")
     bq_dataset_id = st.text_input("ID Dataset BigQuery", 
-                                  value="esempioid", 
+                                  value="example-dataset-id", 
                                   help="Il dataset contenente le tabelle GSC.")
     bq_table_names_str = st.text_area(
         "Nomi Tabelle GSC (separate da virgola)", 
@@ -429,7 +434,6 @@ with st.form(key='query_form'):
     submit_button = st.form_submit_button(label="Chiedi a ChatGSC 💬")
 
 if submit_button and user_question:
-    # La variabile gcp_creds_loaded ora si basa sullo stato dell'app
     gcp_creds_loaded = st.session_state.credentials_successfully_loaded_by_app
 
     if not gcp_creds_loaded:
@@ -503,3 +507,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+�
