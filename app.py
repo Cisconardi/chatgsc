@@ -225,13 +225,18 @@ def summarize_results_with_llm(project_id: str, location: str, model_name: str, 
         results_sample_text = results_df.head(20).to_string(index=False)
         if len(results_df) > 20:
             results_sample_text += f"\n... e altre {len(results_df)-20} righe."
+        
+        # Modifica del prompt per includere l'istruzione di mettere in grassetto
         prompt = f"""
 Data la seguente domanda dell'utente:
 "{original_question}"
+
 E i seguenti risultati ottenuti da una query SQL (massimo 20 righe mostrate se più lunghe):
 {results_sample_text}
+
 Fornisci un breve riassunto conciso e in linguaggio naturale di questi risultati, rispondendo direttamente alla domanda originale dell'utente.
 Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non significativi, indicalo gentilmente.
+**Importante: Metti in grassetto (usando la sintassi Markdown `**testo in grassetto**`) i dati numerici chiave, le date importanti, o i termini più rilevanti nel tuo riassunto per evidenziarli.**
 """
         generation_config = GenerationConfig(temperature=0.5, max_output_tokens=512)
         response = model.generate_content(prompt, generation_config=generation_config)
@@ -425,7 +430,7 @@ if submit_button and user_question:
     if not st.session_state.config_applied_successfully:
         st.error("🤖💬 Per favore, completa e applica la configurazione nella sidebar prima di fare domande.")
     elif not st.session_state.table_schema_for_prompt: 
-        st.error("�💬 Lo schema delle tabelle non è disponibile. Verifica la configurazione e i permessi, poi riapplica la configurazione.")
+        st.error("🤖💬 Lo schema delle tabelle non è disponibile. Verifica la configurazione e i permessi, poi riapplica la configurazione.")
     else:
         st.session_state.sql_query = ""
         st.session_state.query_results = None
@@ -444,9 +449,6 @@ if submit_button and user_question:
                 st.subheader("Query SQL Generata:")
                 st.code(st.session_state.sql_query, language='sql')
             
-                # Esecuzione query e visualizzazione risultati grezzi all'interno dell'expander
-                # Lo spinner per l'esecuzione della query sarà visibile solo se l'expander è aperto
-                # Ma l'operazione avviene comunque.
                 st.session_state.query_results = execute_bigquery_query(gcp_project_id, st.session_state.sql_query)
 
                 if st.session_state.query_results is not None:
@@ -455,11 +457,9 @@ if submit_button and user_question:
                         st.info("La query non ha restituito risultati.")
                     else:
                         st.dataframe(st.session_state.query_results.head(200))
-                else: # Se execute_bigquery_query ha restituito None (a causa di un errore già loggato)
+                else: 
                     st.error("Fallimento esecuzione query BigQuery (vedi messaggi di errore sopra).")
-            # Fine expander Dettagli Tecnici
-
-            # Generazione e visualizzazione del riassunto (se i risultati della query sono disponibili)
+            
             if st.session_state.query_results is not None:
                 with st.spinner(f"🤖💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
                     st.session_state.results_summary = summarize_results_with_llm(
@@ -468,7 +468,7 @@ if submit_button and user_question:
                     )
                 
                 if st.session_state.results_summary and st.session_state.results_summary != "Non ci sono dati da riassumere.":
-                    with st.chat_message("ai", avatar="🤖"):
+                    with st.chat_message("ai", avatar="🤖"): # MODIFICATO QUI
                         st.markdown(st.session_state.results_summary)
                 elif st.session_state.query_results.empty or st.session_state.results_summary == "Non ci sono dati da riassumere.": 
                      st.info("🤖💬 La query non ha restituito risultati da riassumere o non ci sono dati.")
