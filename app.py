@@ -332,8 +332,8 @@ if 'current_schema_config_key' not in st.session_state:
     st.session_state.current_schema_config_key = ""
 if 'credentials_successfully_loaded_by_app' not in st.session_state:
     st.session_state.credentials_successfully_loaded_by_app = False
-if 'last_uploaded_file_id' not in st.session_state: # Per tracciare il file specifico
-    st.session_state.last_uploaded_file_id = None
+if 'last_uploaded_file_id_processed_successfully' not in st.session_state: # Per tracciare il file specifico processato con successo
+    st.session_state.last_uploaded_file_id_processed_successfully = None
 
 
 with st.sidebar:
@@ -347,20 +347,23 @@ with st.sidebar:
     )
 
     if uploaded_credential_file is not None:
-        current_file_id = uploaded_credential_file.id
+        current_file_unique_id = uploaded_credential_file.file_id # Usa file_id per unicità
+        
         # Processa solo se è un file nuovo o se il precedente tentativo con questo file è fallito
-        if st.session_state.last_uploaded_file_id != current_file_id or \
+        # O se le credenziali non sono attualmente considerate caricate con successo
+        if st.session_state.last_uploaded_file_id_processed_successfully != current_file_unique_id or \
            not st.session_state.credentials_successfully_loaded_by_app:
             
             if load_credentials_from_uploaded_file(uploaded_credential_file):
                 st.session_state.credentials_successfully_loaded_by_app = True
-                st.session_state.last_uploaded_file_id = current_file_id # Memorizza l'ID del file processato con successo
+                st.session_state.last_uploaded_file_id_processed_successfully = current_file_unique_id 
                 st.success("File credenziali caricato e processato!")
                 st.rerun() 
             else:
                 st.session_state.credentials_successfully_loaded_by_app = False
-                # Non resettare last_uploaded_file_id qui, per evitare loop se lo stesso file fallisce ripetutamente
-                # Ma assicurati che lo stato di successo sia False
+                # Non impostare last_uploaded_file_id_processed_successfully qui se fallisce, 
+                # per permettere un nuovo tentativo con lo stesso file se l'utente lo desidera
+                # (anche se st.rerun potrebbe non essere ideale in caso di fallimento continuo)
                 st.error("Errore nel processare il file delle credenziali.")
     
     elif uploaded_credential_file is None:
@@ -374,7 +377,7 @@ with st.sidebar:
                 except: pass
             st.session_state.credentials_successfully_loaded_by_app = False
             st.session_state.uploaded_project_id = None
-            st.session_state.last_uploaded_file_id = None
+            st.session_state.last_uploaded_file_id_processed_successfully = None
             st.rerun()
 
 
