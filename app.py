@@ -426,7 +426,7 @@ elif not (gcp_project_id and bq_dataset_id and bq_table_names_str) and any([gcp_
 
 with st.form(key='query_form'):
     user_question = st.text_area("La tua domanda:", height=100, placeholder="Es. Quante impressioni ho ricevuto la scorsa settimana per le query che contengono 'AI'?")
-    submit_button = st.form_submit_button(label="Chiedi all'AI ✨")
+    submit_button = st.form_submit_button(label="Chiedi a ChatGSC 💬")
 
 if submit_button and user_question:
     # La variabile gcp_creds_loaded ora si basa sullo stato dell'app
