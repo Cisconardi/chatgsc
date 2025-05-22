@@ -274,7 +274,7 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
 
 # --- Interfaccia Streamlit ---
 st.title("Benvenuto su ChatGSC 🤖💬")
-st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati in BigQuery. L'AI la tradurrà in SQL e ti risponderà!")
+st.caption("Fai una domanda in linguaggio naturale sui tuoi dati di Google Search Console archiviati in BigQuery. L'AI la tradurrà in SQL e ti risponderà!")
 
 expander_title_text = "ℹ️ Istruzioni per la Configurazione Iniziale"
 
@@ -392,7 +392,7 @@ with st.sidebar:
                                    help="Il tuo ID progetto GCP. Verrà precompilato dal file JSON caricato, se possibile.")
     gcp_location = st.text_input("Location Vertex AI", "europe-west1", help="Es. us-central1, europe-west1. Assicurati che il modello sia disponibile qui.")
     bq_dataset_id = st.text_input("ID Dataset BigQuery", 
-                                  value="gscbu", 
+                                  value="esempioid", 
                                   help="Il dataset contenente le tabelle GSC.")
     bq_table_names_str = st.text_area(
         "Nomi Tabelle GSC (separate da virgola)", 
