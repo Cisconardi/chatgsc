@@ -99,24 +99,29 @@ TARGET_GEMINI_MODEL = "gemini-2.0-flash-001"
 PRIVACY_POLICY_TEXT = """
 **Informativa sulla Privacy per ChatGSC**
 
-**Ultimo aggiornamento:** 22/05/2025
+**Ultimo aggiornamento:** 23/05/2025
 
-Benvenuto in ChatGSC! La tua privacy è importante per noi. Questa Informativa sulla Privacy spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le tue informazioni quando utilizzi la nostra applicazione ChatGSC per interagire con i tuoi dati di Google Search Console tramite Google BigQuery e Vertex AI, utilizzando l'autenticazione OAuth 2.0 di Google.
+**Nota Importante:** Questa applicazione è attualmente in fase di revisione per l'utilizzo dell'autenticazione OAuth 2.0. Per consentire i test e il funzionamento preliminare, l'applicazione utilizza temporaneamente il caricamento di un file JSON di credenziali di un account di servizio Google Cloud. La presente informativa sulla privacy descrive il funzionamento previsto con OAuth 2.0, ma si prega di notare che l'attuale meccanismo di autenticazione è basato su file JSON di account di servizio.
 
-**1. Informazioni che Raccogliamo**
+Benvenuto in ChatGSC! La tua privacy è importante per noi. Questa Informativa sulla Privacy spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le tue informazioni quando utilizzi la nostra applicazione ChatGSC per interagire con i tuoi dati di Google Search Console tramite Google BigQuery e Vertex AI, utilizzando l'autenticazione OAuth 2.0 di Google (come previsto per la versione finale).
 
-Quando utilizzi ChatGSC con l'autenticazione OAuth 2.0, potremmo raccogliere le seguenti informazioni:
+**1. Informazioni che Raccogliamo (con OAuth 2.0)**
+
+Quando utilizzi ChatGSC con l'autenticazione OAuth 2.0 (prevista), potremmo raccogliere le seguenti informazioni:
 
 * **Informazioni sull'Account Google:** Quando ti autentichi utilizzando OAuth 2.0, riceviamo informazioni di base dal tuo profilo Google necessarie per stabilire una connessione sicura e per identificarti come utente autorizzato. Questo di solito include il tuo indirizzo email e informazioni di profilo di base. Non memorizziamo la tua password di Google.
 * **Dati di Google Search Console:** Con il tuo esplicito consenso tramite il flusso OAuth 2.0, l'applicazione accederà ai dati del tuo Google Search Console archiviati nel tuo progetto Google BigQuery. Questi dati includono metriche di performance del sito web come query di ricerca, clic, impressioni, CTR, posizione media, URL delle pagine, ecc. L'applicazione legge questi dati solo per rispondere alle tue domande.
 * **Dati di Utilizzo dell'Applicazione (Opzionale):** Potremmo raccogliere informazioni anonime su come utilizzi ChatGSC (es. tipi di domande poste, funzionalità utilizzate) per migliorare l'applicazione. Questi dati sono aggregati e non identificabili personalmente.
 * **Interazioni con l'AI:** Le domande che poni all'AI e le risposte generate vengono processate tramite i servizi di Vertex AI.
 
+**Funzionamento Attuale con File JSON di Account di Servizio:**
+Attualmente, per utilizzare l'app, carichi un file JSON di un account di servizio. Questo file permette all'applicazione di accedere a Google BigQuery e Vertex AI per tuo conto. Il file viene usato per creare una sessione autenticata e non viene memorizzato permanentemente dall'applicazione oltre la sessione di utilizzo.
+
 **2. Come Utilizziamo le Tue Informazioni**
 
 Utilizziamo le informazioni raccolte per:
 
-* **Fornire e Personalizzare il Servizio:** Per autenticarti, permetterti di interagire con i tuoi dati di Google Search Console, generare query SQL ed elaborare risposte tramite Vertex AI.
+* **Fornire e Personalizzare il Servizio:** Per autenticarti (tramite file JSON nella versione attuale, tramite OAuth 2.0 in futuro), permetterti di interagire con i tuoi dati di Google Search Console, generare query SQL ed elaborare risposte tramite Vertex AI.
 * **Migliorare l'Applicazione:** Per analizzare l'utilizzo e migliorare le funzionalità e l'esperienza utente di ChatGSC.
 * **Comunicazioni (se applicabile):** Per inviarti aggiornamenti importanti sull'applicazione o rispondere a tue richieste di supporto.
 
@@ -130,17 +135,20 @@ Non vendiamo né affittiamo le tue informazioni personali a terzi. Potremmo cond
 
 **4. Sicurezza dei Dati**
 
-Adottiamo misure ragionevoli per proteggere le tue informazioni da accessi non autorizzati, alterazione, divulgazione o distruzione. L'accesso ai tuoi dati di Google Search Console avviene tramite il protocollo sicuro OAuth 2.0 e i token di accesso sono gestiti in modo sicuro. Tuttavia, nessuna trasmissione via Internet o metodo di archiviazione elettronica è sicuro al 100%.
+* **File JSON Account di Servizio (attuale):** È tua responsabilità gestire la sicurezza del file JSON del tuo account di servizio prima di caricarlo. L'applicazione utilizza il file per l'autenticazione durante la sessione. Ti consigliamo di utilizzare account di servizio con i permessi minimi necessari.
+* **OAuth 2.0 (previsto):** Adottiamo misure ragionevoli per proteggere le tue informazioni da accessi non autorizzati, alterazione, divulgazione o distruzione. L'accesso ai tuoi dati di Google Search Console avverrà tramite il protocollo sicuro OAuth 2.0 e i token di accesso saranno gestiti in modo sicuro. Tuttavia, nessuna trasmissione via Internet o metodo di archiviazione elettronica è sicuro al 100%.
 
 **5. Conservazione dei Dati**
 
-* **Token OAuth:** Conserviamo i token di accesso OAuth solo per la durata necessaria a mantenere attiva la tua sessione o come consentito da Google.
+* **File JSON Account di Servizio (attuale):** Il contenuto del file di credenziali viene utilizzato per creare un file temporaneo che persiste solo per la durata dell'esecuzione dello script dell'applicazione. Viene fatto un tentativo di eliminare questo file temporaneo alla chiusura dello script.
+* **Token OAuth (previsto):** Conserviamo i token di accesso OAuth solo per la durata necessaria a mantenere attiva la tua sessione o come consentito da Google.
 * **Dati di Search Console:** Non archiviamo copie permanenti dei tuoi dati di Google Search Console. I dati vengono letti da BigQuery "on-demand" per rispondere alle tue domande.
 * **Cronologia delle Query (se implementata):** Se l'applicazione implementa una cronologia delle query, questa verrà conservata solo per la tua comodità e potrai avere la possibilità di cancellarla.
 
 **6. I Tuoi Diritti**
 
-In base alla tua giurisdizione, potresti avere determinati diritti riguardo alle tue informazioni personali, come il diritto di accedere, correggere o richiedere la cancellazione dei tuoi dati. Puoi revocare in qualsiasi momento l'accesso dell'applicazione ai tuoi dati Google tramite le impostazioni di sicurezza del tuo Account Google.
+* **File JSON Account di Servizio (attuale):** Hai il controllo sul file JSON del tuo account di servizio e sui permessi IAM ad esso associati.
+* **OAuth 2.0 (previsto):** In base alla tua giurisdizione, potresti avere determinati diritti riguardo alle tue informazioni personali, come il diritto di accedere, correggere o richiedere la cancellazione dei tuoi dati. Puoi revocare in qualsiasi momento l'accesso dell'applicazione ai tuoi dati Google tramite le impostazioni di sicurezza del tuo Account Google.
 
 **7. Modifiche a Questa Informativa sulla Privacy**
 
@@ -149,10 +157,10 @@ Potremmo aggiornare questa Informativa sulla Privacy di tanto in tanto. Ti infor
 **8. Contattaci**
 
 Se hai domande su questa Informativa sulla Privacy, contattaci a:
-info@francisconardi.it
+info@francisconardi o su LinkedIn
 
 ---
-
+*Nota Importante: Questa è una bozza generica. Dovrai adattarla specificamente alle funzionalità della tua app e assicurarti che sia conforme alle leggi sulla privacy come il GDPR (se applicabile).*
 """
 
 # --- Funzioni Core ---
