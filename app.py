@@ -41,15 +41,15 @@ def reset_config_and_creds_state():
     st.session_state.credentials_successfully_loaded_by_app = False
     st.session_state.uploaded_project_id = None
     st.session_state.last_uploaded_file_id_processed_successfully = None
-    st.session_state.config_applied_successfully = False # Resetta anche lo stato di configurazione applicata
-    st.session_state.table_schema_for_prompt = "" # Pulisce lo schema caricato
-    st.session_state.current_schema_config_key = "" # Forza ricaricamento schema
+    st.session_state.config_applied_successfully = False 
+    st.session_state.table_schema_for_prompt = "" 
+    st.session_state.current_schema_config_key = "" 
     print("DEBUG: Stato credenziali e configurazione resettato.")
 
 
 def load_credentials_from_uploaded_file(uploaded_file):
     global _temp_gcp_creds_file_path
-    reset_config_and_creds_state() # Resetta sempre prima di caricare nuove credenziali
+    reset_config_and_creds_state() 
 
     if uploaded_file is not None:
         try:
@@ -75,7 +75,7 @@ def load_credentials_from_uploaded_file(uploaded_file):
             return True
         except Exception as e:
             st.error(f"🤖💬 Errore durante il caricamento del file delle credenziali: {e}")
-            reset_config_and_creds_state() # Assicura pulizia in caso di errore
+            reset_config_and_creds_state() 
             return False
     return False
 
@@ -186,7 +186,7 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
             st.warning(f"La risposta del modello non sembra una query SELECT/WITH valida: {sql_query}. Tentativo di esecuzione comunque.")
         return sql_query
     except Exception as e:
-        st.error(f"🤖💬 Errore durante la chiamata a Vertex AI: {e}") 
+        st.error(f"�💬 Errore durante la chiamata a Vertex AI: {e}") 
         if 'last_prompt' in st.session_state:
             st.expander("Ultimo Prompt Inviato (Debug)").code(st.session_state.last_prompt, language='text')
         return None
@@ -200,14 +200,14 @@ def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | No
         return None
     try:
         client = bigquery.Client(project=project_id) 
-        st.info(f"Esecuzione query su BigQuery...")
+        # st.info(f"Esecuzione query su BigQuery...") # Nascosto
         query_job = client.query(sql_query)
         results_df = query_job.to_dataframe() 
-        st.success(f"�💬 Query completata! {len(results_df)} righe restituite.")
+        # st.success(f"🤖💬 Query completata! {len(results_df)} righe restituite.") # Nascosto
         return results_df
     except Exception as e:
         st.error(f"🤖💬 Errore durante l'esecuzione della query BigQuery: {e}")
-        st.code(sql_query, language='sql')
+        # st.code(sql_query, language='sql') # Nascosto
         return None
 
 def summarize_results_with_llm(project_id: str, location: str, model_name: str, results_df: pd.DataFrame, original_question: str) -> str | None:
@@ -215,7 +215,7 @@ def summarize_results_with_llm(project_id: str, location: str, model_name: str, 
         st.error("🤖💬 Le credenziali GCP non sono state caricate. Impossibile procedere con il riassunto.")
         return None
     if results_df.empty:
-        return "Non ci sono dati da riassumere."
+        return "Non ci sono dati da riassumere." # Questo verrà mostrato se la query non ha risultati
     if not all([project_id, location, model_name]):
         st.error("🤖💬 Mancano alcuni parametri per la generazione del riassunto (progetto, location, modello).")
         return None
@@ -303,13 +303,12 @@ if 'credentials_successfully_loaded_by_app' not in st.session_state:
     st.session_state.credentials_successfully_loaded_by_app = False
 if 'last_uploaded_file_id_processed_successfully' not in st.session_state: 
     st.session_state.last_uploaded_file_id_processed_successfully = None
-if 'config_applied_successfully' not in st.session_state: # Nuovo stato per il pulsante Applica
+if 'config_applied_successfully' not in st.session_state: 
     st.session_state.config_applied_successfully = False
 
 def on_config_change():
-    """Chiamato quando un input di configurazione cambia, per resettare lo stato 'config_applied'."""
     st.session_state.config_applied_successfully = False
-    st.session_state.current_schema_config_key = "" # Forza ricaricamento schema se la config cambia
+    st.session_state.current_schema_config_key = "" 
     print("DEBUG: Configurazione cambiata, config_applied_successfully resettato.")
 
 
@@ -321,7 +320,7 @@ with st.sidebar:
         "Seleziona il file JSON della chiave del tuo account di servizio GCP", 
         type="json", 
         key="credential_uploader",
-        on_change=on_config_change # Se il file cambia, la config non è più valida
+        on_change=on_config_change 
     )
 
     if uploaded_credential_file is not None:
@@ -331,17 +330,16 @@ with st.sidebar:
             if load_credentials_from_uploaded_file(uploaded_credential_file):
                 st.session_state.credentials_successfully_loaded_by_app = True
                 st.session_state.last_uploaded_file_id_processed_successfully = current_file_unique_id 
-                # Non mostrare st.success qui, lo stato verrà mostrato sotto
+                # st.success("File credenziali caricato e processato!") # Rimosso per pulizia UI
                 st.rerun() 
             else:
                 st.session_state.credentials_successfully_loaded_by_app = False
-                st.error("Errore nel processare il file delle credenziali.")
+                # st.error("Errore nel processare il file delle credenziali.") # L'errore viene già mostrato da load_credentials
     elif uploaded_credential_file is None and st.session_state.credentials_successfully_loaded_by_app:
         print("DEBUG: File uploader svuotato, resetto stato credenziali.")
-        reset_config_and_creds_state() # Questa funzione ora resetta anche config_applied_successfully
+        reset_config_and_creds_state() 
         st.rerun()
 
-    # Stato credenziali
     if st.session_state.credentials_successfully_loaded_by_app:
         st.success("🤖💬 Credenziali GCP caricate.")
     else:
@@ -359,7 +357,7 @@ with st.sidebar:
                                  help="Es. us-central1. Modello deve essere disponibile qui.",
                                  on_change=on_config_change)
     bq_dataset_id = st.text_input("ID Dataset BigQuery", 
-                                  value="example-dataset-id", # Non precompilato automaticamente
+                                  value="example-dataset-id", 
                                   help="Dataset contenente le tabelle GSC.",
                                   on_change=on_config_change)
     bq_table_names_str = st.text_area(
@@ -373,7 +371,7 @@ with st.sidebar:
     few_shot_examples = "" 
 
     st.divider()
-    enable_summary = st.checkbox("Abilita riassunto LLM dei risultati", value=True, on_change=on_config_change)
+    # Rimosso enable_summary checkbox
     
     st.divider()
     apply_config_button = st.button("Applica Configurazione", key="apply_config")
@@ -398,9 +396,9 @@ with st.sidebar:
         
         if all_fields_filled:
             st.session_state.config_applied_successfully = True
-            st.session_state.current_schema_config_key = "" # Forza ricaricamento schema
+            st.session_state.current_schema_config_key = "" 
             st.success("🤖💬 Configurazione applicata! Ora puoi fare domande.")
-            st.rerun() # Rerun per aggiornare lo stato dell'app principale
+            st.rerun() 
         else:
             st.session_state.config_applied_successfully = False
     
@@ -408,7 +406,6 @@ with st.sidebar:
         st.info("Configurazione attiva. Modifica i campi e riapplica se necessario.")
 
 
-# Logica per caricare lo schema solo se la configurazione è stata applicata
 if st.session_state.config_applied_successfully:
     if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") and gcp_project_id and bq_dataset_id and bq_table_names_str:
         schema_config_key = f"{gcp_project_id}_{bq_dataset_id}_{bq_table_names_str}"
@@ -417,14 +414,9 @@ if st.session_state.config_applied_successfully:
                 st.session_state.table_schema_for_prompt = get_table_schema_for_prompt(gcp_project_id, bq_dataset_id, bq_table_names_str)
             st.session_state.current_schema_config_key = schema_config_key
             if st.session_state.table_schema_for_prompt:
-                if hasattr(st, 'sidebar') and st.sidebar: # Dovrebbe essere sempre vero qui
+                if hasattr(st, 'sidebar') and st.sidebar: 
                     with st.sidebar.expander("Vedi Schema Caricato per Prompt (Debug)", expanded=False): 
                         st.code(st.session_state.table_schema_for_prompt, language='text')
-            # else: # L'errore è già gestito da get_table_schema_for_prompt
-            #    st.error("Impossibile caricare lo schema delle tabelle con la configurazione corrente.")
-    # else:
-        # Questo caso dovrebbe essere prevenuto dal pulsante "Applica Configurazione"
-        # st.warning("Mancano parametri per caricare lo schema.")
 
 
 with st.form(key='query_form'):
@@ -434,7 +426,7 @@ with st.form(key='query_form'):
 if submit_button and user_question:
     if not st.session_state.config_applied_successfully:
         st.error("🤖💬 Per favore, completa e applica la configurazione nella sidebar prima di fare domande.")
-    elif not st.session_state.table_schema_for_prompt: # Ulteriore controllo se lo schema non è stato caricato nonostante config_applied
+    elif not st.session_state.table_schema_for_prompt: 
         st.error("🤖💬 Lo schema delle tabelle non è disponibile. Verifica la configurazione e i permessi, poi riapplica la configurazione.")
     else:
         st.session_state.sql_query = ""
@@ -450,50 +442,51 @@ if submit_button and user_question:
             )
 
         if st.session_state.sql_query:
-            st.subheader("🔍 Query SQL Generata:")
-            st.code(st.session_state.sql_query, language='sql')
+            # Non mostrare la query SQL:
+            # st.subheader("🔍 Query SQL Generata:")
+            # st.code(st.session_state.sql_query, language='sql')
             
             with st.spinner(f"🤖💬 Esecuzione query su BigQuery nel progetto {gcp_project_id}..."):
                 st.session_state.query_results = execute_bigquery_query(gcp_project_id, st.session_state.sql_query)
 
             if st.session_state.query_results is not None:
-                st.subheader("📊 Risultati dalla Query:")
-                if st.session_state.query_results.empty:
-                    st.info("🤖💬 La query non ha restituito risultati.")
-                else:
-                    st.dataframe(st.session_state.query_results)
+                # Non mostrare i risultati grezzi della query:
+                # st.subheader("📊 Risultati dalla Query:")
+                # if st.session_state.query_results.empty:
+                #     st.info("🤖💬 La query non ha restituito risultati.")
+                # else:
+                #     st.dataframe(st.session_state.query_results)
 
-                    if enable_summary:
-                        with st.spinner(f"🤖💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
-                            st.session_state.results_summary = summarize_results_with_llm(
-                                gcp_project_id, gcp_location, llm_model_name_to_use, 
-                                st.session_state.query_results, user_question
-                            )
-                        if st.session_state.results_summary:
-                            st.subheader("📝 Riassunto dei Risultati:")
-                            st.markdown(st.session_state.results_summary)
+                # Il riassunto è ora sempre abilitato
+                with st.spinner(f"🤖💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
+                    st.session_state.results_summary = summarize_results_with_llm(
+                        gcp_project_id, gcp_location, llm_model_name_to_use, 
+                        st.session_state.query_results, user_question
+                    )
+                if st.session_state.results_summary:
+                    st.subheader("📝 Risposta da ChatGSC:")
+                    st.markdown(st.session_state.results_summary)
+                elif st.session_state.query_results.empty: # Se il riassunto è vuoto perché non c'erano dati
+                     st.info("🤖💬 La query non ha restituito risultati da riassumere.")
+                else: # Se c'erano dati ma il riassunto fallisce per qualche motivo
+                    st.warning("🤖💬 Non è stato possibile generare un riassunto, ma la query ha prodotto risultati.")
+
+            else: # Se execute_bigquery_query restituisce None (errore)
+                st.error("🤖💬 Si è verificato un errore durante l'esecuzione della query su BigQuery.")
         else:
             st.error("Non è stato possibile generare una query SQL per la tua domanda.")
             if 'last_prompt' in st.session_state and st.session_state.last_prompt:
                  with st.expander("Debug: Ultimo Prompt Inviato all'LLM per SQL"):
                     st.code(st.session_state.last_prompt, language='text')
 
-elif not submit_button: # Mostra risultati precedenti se il form non è stato inviato
-    if st.session_state.config_applied_successfully: # Ma solo se la configurazione è stata applicata
-        if st.session_state.sql_query:
-            st.subheader("🔍 Query SQL Generata (Precedente):")
-            st.code(st.session_state.sql_query, language='sql')
-        if st.session_state.query_results is not None:
-            st.subheader("📊 Risultati dalla Query (Precedente):")
-            if st.session_state.query_results.empty:
-                st.info("La query non ha restituito risultati.")
-            else:
-                st.dataframe(st.session_state.query_results)
-        if st.session_state.results_summary:
-            st.subheader("📝 Riassunto dei Risultati (Precedente):")
-            st.markdown(st.session_state.results_summary)
-    elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): # Se le credenziali sono caricate ma la config non applicata
-        st.info("🤖💬 Completa i parametri nella sidebar e premi 'Applica Configurazione' per iniziare.")
+# Non mostrare i risultati precedenti se il form non è stato inviato, per mantenere la UI pulita
+# elif not submit_button: 
+#     if st.session_state.config_applied_successfully: 
+#         if st.session_state.results_summary: # Mostra solo il riassunto precedente
+#             st.subheader("📝 Risposta da ChatGSC (Precedente):")
+#             st.markdown(st.session_state.results_summary)
+#     elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
+#         st.info("🤖💬 Completa i parametri nella sidebar e premi 'Applica Configurazione' per iniziare.")
 
 
 st.markdown("---")
