@@ -50,9 +50,9 @@ def load_credentials_from_uploaded_file(uploaded_file):
                 # Estrai project_id e salvalo in session_state
                 st.session_state.uploaded_project_id = creds_dict.get("project_id")
                 if not st.session_state.uploaded_project_id:
-                    st.warning("Il file JSON caricato non contiene un 'project_id'. Sarà necessario inserirlo manualmente.")
+                    st.warning("🤖💬 Il file JSON caricato non contiene un 'project_id'. Sarà necessario inserirlo manualmente.")
             except json.JSONDecodeError as json_err:
-                st.error(f"Il file caricato non contiene un JSON valido: {json_err}.")
+                st.error(f"🤖💬 Il file caricato non contiene un JSON valido: {json_err}.")
                 st.session_state.uploaded_project_id = None
                 return False
 
@@ -64,7 +64,7 @@ def load_credentials_from_uploaded_file(uploaded_file):
             print(f"DEBUG: Credenziali caricate da file upload: {_temp_gcp_creds_file_path}")
             return True # Indica successo
         except Exception as e:
-            st.error(f"Errore durante il caricamento del file delle credenziali: {e}")
+            st.error(f"🤖💬 Errore durante il caricamento del file delle credenziali: {e}")
             st.session_state.uploaded_project_id = None
             # Assicurati che l'env var sia pulita in caso di errore dopo averla impostata
             if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
@@ -81,7 +81,6 @@ def load_credentials_from_uploaded_file(uploaded_file):
 # Modello Gemini da utilizzare
 TARGET_GEMINI_MODEL = "gemini-2.0-flash-001"
 
-
 # --- Funzioni Core ---
 
 def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_str: str) -> str | None:
@@ -89,21 +88,21 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
     Recupera lo schema delle tabelle specificate da BigQuery e lo formatta per il prompt LLM.
     """
     if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
-        st.error("Le credenziali GCP non sono state caricate. Carica il file JSON nella sidebar.")
+        st.error("🤖💬 Le credenziali GCP non sono state caricate. Carica il file JSON nella sidebar.")
         return None
     if not project_id or not dataset_id or not table_names_str:
-        st.error("ID Progetto, ID Dataset e Nomi Tabelle sono necessari per recuperare lo schema.")
+        st.error("🤖💬 ID Progetto, ID Dataset e Nomi Tabelle sono necessari per recuperare lo schema.")
         return None
 
     table_names = [name.strip() for name in table_names_str.split(',') if name.strip()]
     if not table_names:
-        st.error("Per favore, fornisci almeno un nome di tabella valido.")
+        st.error("🤖💬 Per favore, fornisci almeno un nome di tabella valido.")
         return None
     
     try:
         client = bigquery.Client(project=project_id) 
     except Exception as e:
-        st.error(f"Impossibile inizializzare il client BigQuery: {e}. Verifica le credenziali e i permessi.")
+        st.error(f"🤖💬 Impossibile inizializzare il client BigQuery: {e}. Verifica le credenziali e i permessi.")
         return None
         
     schema_prompt_parts = []
@@ -142,10 +141,10 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
 def generate_sql_from_question(project_id: str, location: str, model_name: str, question: str, table_schema_prompt: str, few_shot_examples_str: str) -> str | None:
     """Genera una query SQL da una domanda in linguaggio naturale utilizzando Vertex AI."""
     if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
-        st.error("Le credenziali GCP non sono state caricate. Impossibile procedere con la generazione SQL.")
+        st.error("🤖💬 Le credenziali GCP non sono state caricate. Impossibile procedere con la generazione SQL.")
         return None
     if not all([project_id, location, model_name, question, table_schema_prompt]):
-        st.error("Mancano alcuni parametri per la generazione SQL (progetto, location, modello, domanda, schema).")
+        st.error("🤖💬 Mancano alcuni parametri per la generazione SQL (progetto, location, modello, domanda, schema).")
         return None
 
     try:
@@ -186,13 +185,13 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
         response = model.generate_content(full_prompt, generation_config=generation_config)
         
         if not response.candidates or not response.candidates[0].content.parts:
-            st.error("Il modello non ha restituito una risposta valida.")
+            st.error("🤖💬 Il modello non ha restituito una risposta valida.")
             return None
 
         sql_query = response.candidates[0].content.parts[0].text.strip()
 
         if "ERRORE:" in sql_query:
-            st.error(f"Il modello ha indicato un errore: {sql_query}")
+            st.error(f"🤖💬 Il modello ha indicato un errore: {sql_query}")
             return None
         
         sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
@@ -203,7 +202,7 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
         return sql_query
 
     except Exception as e:
-        st.error(f"Errore durante la chiamata a Vertex AI: {e}") 
+        st.error(f"🤖💬 Errore durante la chiamata a Vertex AI: {e}") 
         if 'last_prompt' in st.session_state:
             st.expander("Ultimo Prompt Inviato (Debug)").code(st.session_state.last_prompt, language='text')
         return None
@@ -215,29 +214,29 @@ def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | No
         st.error("Le credenziali GCP non sono state caricate. Impossibile procedere con l'esecuzione della query.")
         return None
     if not project_id or not sql_query:
-        st.error("ID Progetto e query SQL sono necessari per l'esecuzione su BigQuery.")
+        st.error("🤖💬 ID Progetto e query SQL sono necessari per l'esecuzione su BigQuery.")
         return None
     try:
         client = bigquery.Client(project=project_id) 
         st.info(f"Esecuzione query su BigQuery...")
         query_job = client.query(sql_query)
         results_df = query_job.to_dataframe() 
-        st.success(f"Query completata! {len(results_df)} righe restituite.")
+        st.success(f"🤖💬 Query completata! {len(results_df)} righe restituite.")
         return results_df
     except Exception as e:
-        st.error(f"Errore durante l'esecuzione della query BigQuery: {e}")
+        st.error(f"🤖💬 Errore durante l'esecuzione della query BigQuery: {e}")
         st.code(sql_query, language='sql')
         return None
 
 def summarize_results_with_llm(project_id: str, location: str, model_name: str, results_df: pd.DataFrame, original_question: str) -> str | None:
     """Riassume i risultati della query in linguaggio naturale utilizzando Vertex AI."""
     if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        st.error("Le credenziali GCP non sono state caricate. Impossibile procedere con il riassunto.")
+        st.error("🤖💬 Le credenziali GCP non sono state caricate. Impossibile procedere con il riassunto.")
         return None
     if results_df.empty:
         return "Non ci sono dati da riassumere."
     if not all([project_id, location, model_name]):
-        st.error("Mancano alcuni parametri per la generazione del riassunto (progetto, location, modello).")
+        st.error("🤖💬 Mancano alcuni parametri per la generazione del riassunto (progetto, location, modello).")
         return None
 
     try:
@@ -273,8 +272,8 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
 
 
 # --- Interfaccia Streamlit ---
-st.title("Benvenuto su ChatGSC 🤖💬")
-st.caption("Fai una domanda in linguaggio naturale sui tuoi dati di Google Search Console archiviati in BigQuery. L'AI la tradurrà in SQL e ti risponderà!")
+st.title("Ciao, sono ChatGSC 🤖💬")
+st.caption("Fai una domanda in linguaggio naturale sui tuoi dati di Google Search Console archiviati in BigQuery. La mia AI la tradurrà in SQL e ti risponderò!")
 
 expander_title_text = "ℹ️ Istruzioni per la Configurazione Iniziale"
 
@@ -377,9 +376,9 @@ with st.sidebar:
 
     # Logica per mostrare lo stato delle credenziali basata sul caricamento dell'app
     if st.session_state.credentials_successfully_loaded_by_app:
-        st.success("Credenziali GCP caricate tramite file e attive.")
+        st.success("🤖💬 Credenziali GCP caricate tramite file e attive.")
     else:
-        st.warning("Per favore, carica il file JSON delle credenziali GCP per continuare.")
+        st.warning("🤖💬 Per favore, carica il file JSON delle credenziali GCP per continuare.")
 
 
     st.divider()
@@ -422,7 +421,7 @@ elif not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
     pass
 elif not (gcp_project_id and bq_dataset_id and bq_table_names_str) and any([gcp_project_id, bq_dataset_id, bq_table_names_str]): 
     if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") and hasattr(st, 'sidebar') and st.sidebar:
-        st.sidebar.warning("Completa ID Progetto, ID Dataset e Nomi Tabelle per caricare lo schema.")
+        st.sidebar.warning("🤖💬 Completa ID Progetto, ID Dataset e Nomi Tabelle per caricare lo schema.")
 
 
 with st.form(key='query_form'):
@@ -446,7 +445,7 @@ if submit_button and user_question:
         
         llm_model_name_to_use = TARGET_GEMINI_MODEL
 
-        with st.spinner(f"L'AI sta pensando (usando {llm_model_name_to_use}) e generando la query SQL..."):
+        with st.spinner(f"🤖💬 Sto pensando (usando {llm_model_name_to_use}) e generando la query SQL..."):
             st.session_state.sql_query = generate_sql_from_question(
                 gcp_project_id, gcp_location, llm_model_name_to_use, user_question, 
                 st.session_state.table_schema_for_prompt, few_shot_examples 
