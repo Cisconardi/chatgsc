@@ -186,7 +186,7 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
             st.warning(f"La risposta del modello non sembra una query SELECT/WITH valida: {sql_query}. Tentativo di esecuzione comunque.")
         return sql_query
     except Exception as e:
-        st.error(f"�💬 Errore durante la chiamata a Vertex AI: {e}") 
+        st.error(f"🤖💬 Errore durante la chiamata a Vertex AI: {e}") 
         if 'last_prompt' in st.session_state:
             st.expander("Ultimo Prompt Inviato (Debug)").code(st.session_state.last_prompt, language='text')
         return None
@@ -215,7 +215,7 @@ def summarize_results_with_llm(project_id: str, location: str, model_name: str, 
         st.error("🤖💬 Le credenziali GCP non sono state caricate. Impossibile procedere con il riassunto.")
         return None
     if results_df.empty:
-        return "Non ci sono dati da riassumere." # Questo verrà mostrato se la query non ha risultati
+        return "Non ci sono dati da riassumere." 
     if not all([project_id, location, model_name]):
         st.error("🤖💬 Mancano alcuni parametri per la generazione del riassunto (progetto, location, modello).")
         return None
@@ -330,11 +330,9 @@ with st.sidebar:
             if load_credentials_from_uploaded_file(uploaded_credential_file):
                 st.session_state.credentials_successfully_loaded_by_app = True
                 st.session_state.last_uploaded_file_id_processed_successfully = current_file_unique_id 
-                # st.success("File credenziali caricato e processato!") # Rimosso per pulizia UI
                 st.rerun() 
             else:
                 st.session_state.credentials_successfully_loaded_by_app = False
-                # st.error("Errore nel processare il file delle credenziali.") # L'errore viene già mostrato da load_credentials
     elif uploaded_credential_file is None and st.session_state.credentials_successfully_loaded_by_app:
         print("DEBUG: File uploader svuotato, resetto stato credenziali.")
         reset_config_and_creds_state() 
@@ -442,22 +440,17 @@ if submit_button and user_question:
             )
 
         if st.session_state.sql_query:
-            # Non mostrare la query SQL:
-            # st.subheader("🔍 Query SQL Generata:")
-            # st.code(st.session_state.sql_query, language='sql')
+            with st.expander("🔍 Dettagli Tecnici (Query SQL)", expanded=False):
+                st.code(st.session_state.sql_query, language='sql')
             
             with st.spinner(f"🤖💬 Esecuzione query su BigQuery nel progetto {gcp_project_id}..."):
                 st.session_state.query_results = execute_bigquery_query(gcp_project_id, st.session_state.sql_query)
 
             if st.session_state.query_results is not None:
-                # Non mostrare i risultati grezzi della query:
-                # st.subheader("📊 Risultati dalla Query:")
-                # if st.session_state.query_results.empty:
-                #     st.info("🤖💬 La query non ha restituito risultati.")
-                # else:
-                #     st.dataframe(st.session_state.query_results)
-
-                # Il riassunto è ora sempre abilitato
+                if not st.session_state.query_results.empty:
+                     with st.expander("📊 Risultati Grezzi dalla Query (Primi 200)", expanded=False):
+                        st.dataframe(st.session_state.query_results.head(200))
+                
                 with st.spinner(f"🤖💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
                     st.session_state.results_summary = summarize_results_with_llm(
                         gcp_project_id, gcp_location, llm_model_name_to_use, 
@@ -466,12 +459,12 @@ if submit_button and user_question:
                 if st.session_state.results_summary:
                     st.subheader("📝 Risposta da ChatGSC:")
                     st.markdown(st.session_state.results_summary)
-                elif st.session_state.query_results.empty: # Se il riassunto è vuoto perché non c'erano dati
+                elif st.session_state.query_results.empty: 
                      st.info("🤖💬 La query non ha restituito risultati da riassumere.")
-                else: # Se c'erano dati ma il riassunto fallisce per qualche motivo
-                    st.warning("🤖💬 Non è stato possibile generare un riassunto, ma la query ha prodotto risultati.")
+                else: 
+                    st.warning("🤖💬 Non è stato possibile generare un riassunto, ma la query ha prodotto risultati (vedi dettagli tecnici).")
 
-            else: # Se execute_bigquery_query restituisce None (errore)
+            else: 
                 st.error("🤖💬 Si è verificato un errore durante l'esecuzione della query su BigQuery.")
         else:
             st.error("Non è stato possibile generare una query SQL per la tua domanda.")
@@ -481,13 +474,7 @@ if submit_button and user_question:
 
 # Non mostrare i risultati precedenti se il form non è stato inviato, per mantenere la UI pulita
 # elif not submit_button: 
-#     if st.session_state.config_applied_successfully: 
-#         if st.session_state.results_summary: # Mostra solo il riassunto precedente
-#             st.subheader("📝 Risposta da ChatGSC (Precedente):")
-#             st.markdown(st.session_state.results_summary)
-#     elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
-#         st.info("🤖💬 Completa i parametri nella sidebar e premi 'Applica Configurazione' per iniziare.")
-
+# ... (logica precedente per mostrare risultati precedenti è stata rimossa per semplicità)
 
 st.markdown("---")
 st.markdown(
