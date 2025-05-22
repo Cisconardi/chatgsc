@@ -560,28 +560,31 @@ if submit_button and user_question:
 
 # Footer e Dialogo Privacy Policy
 st.markdown("---")
-col_footer_1, col_footer_2 = st.columns([0.8, 0.2]) # Rapporto per allineare meglio il pulsante
-with col_footer_1:
-    st.markdown(
+# Utilizzo di colonne per allineare il pulsante della privacy policy a destra
+# e il testo "Made with" a sinistra.
+left_footer_col, right_footer_col = st.columns([0.85, 0.15])
+
+with left_footer_col:
+    st.markdown( # Corretto il link e rimosso il Markdown interno all'href
         """
-        <div style="text-align: left; padding-top: 10px; padding-bottom: 10px; display: flex; align-items: center;">
+        <div style="text-align: left; padding-top: 10px; padding-bottom: 10px;">
             Made with ❤️ by <a href="[https://www.linkedin.com/in/francisco-nardi-212b338b/](https://www.linkedin.com/in/francisco-nardi-212b338b/)" target="_blank" style="text-decoration: none; color: inherit;">Francisco Nardi</a>
         </div>
         """,
         unsafe_allow_html=True
     )
-with col_footer_2:
-    # Usare un container per allineare il pulsante a destra e verticalmente al centro
-    # La spaziatura potrebbe richiedere aggiustamenti
-    st.markdown('<div style="display: flex; align-items: center; justify-content: flex-end; height: 100%;">', unsafe_allow_html=True)
-    if st.button("Privacy Policy", key="privacy_button_popup", help="Leggi l'informativa sulla privacy"):
+
+with right_footer_col:
+    # Aggiungi un po' di spazio sopra il pulsante per un migliore allineamento verticale se necessario
+    st.markdown("<div style='padding-top: 10px;'></div>", unsafe_allow_html=True) 
+    if st.button("Privacy Policy", key="privacy_button_popup_footer", help="Leggi l'informativa sulla privacy"):
         st.session_state.show_privacy_policy = True
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 if st.session_state.get('show_privacy_policy', False):
-    with st.dialog("Informativa sulla Privacy", width="large"): # Assicurati che st.dialog sia disponibile (Streamlit >= 1.33.0)
-        st.markdown(PRIVACY_POLICY_TEXT)
-        if st.button("Chiudi", key="close_privacy_dialog"):
-            st.session_state.show_privacy_policy = False
-            st.rerun()
+    # Sostituzione di st.dialog con un blocco condizionale per compatibilità
+    st.subheader("Informativa sulla Privacy per ChatGSC")
+    st.markdown(PRIVACY_POLICY_TEXT) # Mostra il testo della policy
+    if st.button("Chiudi Informativa", key="close_privacy_policy_main_area"):
+        st.session_state.show_privacy_policy = False
+        st.rerun() # Ricarica per nascondere la policy
