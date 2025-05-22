@@ -397,7 +397,7 @@ with st.sidebar:
     bq_table_names_str = st.text_area(
         "Nomi Tabelle GSC (separate da virgola)", 
         "searchdata_url_impression,searchdata_site_impression", 
-        help="Nomi delle tabelle GSC nel dataset specificato, es. searchdata_site_impression, searchdata_url_impression"
+        help="🤖💬 Nomi delle tabelle GSC nel dataset specificato, es. searchdata_site_impression, searchdata_url_impression"
     )
     
     st.markdown(f"ℹ️ Modello AI utilizzato: **{TARGET_GEMINI_MODEL}**.")
@@ -434,11 +434,11 @@ if submit_button and user_question:
     gcp_creds_loaded = st.session_state.credentials_successfully_loaded_by_app
 
     if not gcp_creds_loaded:
-        st.error("Per favore, carica il file JSON delle credenziali GCP nella sidebar.")
+        st.error("🤖💬 Per favore, carica il file JSON delle credenziali GCP nella sidebar.")
     elif not all([gcp_project_id, gcp_location, bq_dataset_id, bq_table_names_str]):
-        st.error("Per favore, completa la configurazione dei parametri query nella sidebar (ID Progetto, Location, Dataset, Tabelle).")
+        st.error("🤖💬 Per favore, completa la configurazione dei parametri query nella sidebar (ID Progetto, Location, Dataset, Tabelle).")
     elif not st.session_state.table_schema_for_prompt:
-        st.error("Lo schema delle tabelle non è stato caricato correttamente. Verifica la configurazione e che le credenziali caricate abbiano i permessi necessari.")
+        st.error("🤖💬 Lo schema delle tabelle non è stato caricato correttamente. Verifica la configurazione e che le credenziali caricate abbiano i permessi necessari.")
     else:
         st.session_state.sql_query = ""
         st.session_state.query_results = None
@@ -456,18 +456,18 @@ if submit_button and user_question:
             st.subheader("🔍 Query SQL Generata:")
             st.code(st.session_state.sql_query, language='sql')
             
-            with st.spinner(f"Esecuzione query su BigQuery nel progetto {gcp_project_id}..."):
+            with st.spinner(f"🤖💬 Esecuzione query su BigQuery nel progetto {gcp_project_id}..."):
                 st.session_state.query_results = execute_bigquery_query(gcp_project_id, st.session_state.sql_query)
 
             if st.session_state.query_results is not None:
                 st.subheader("📊 Risultati dalla Query:")
                 if st.session_state.query_results.empty:
-                    st.info("La query non ha restituito risultati.")
+                    st.info("🤖💬 La query non ha restituito risultati.")
                 else:
                     st.dataframe(st.session_state.query_results)
 
                     if enable_summary:
-                        with st.spinner(f"L'AI sta generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
+                        with st.spinner(f"🤖💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
                             st.session_state.results_summary = summarize_results_with_llm(
                                 gcp_project_id, gcp_location, llm_model_name_to_use, 
                                 st.session_state.query_results, user_question
