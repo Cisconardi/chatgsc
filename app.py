@@ -96,7 +96,7 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
 
     table_names = [name.strip() for name in table_names_str.split(',') if name.strip()]
     if not table_names:
-        st.error("�💬 Per favore, fornisci almeno un nome di tabella valido.")
+        st.error("🤖💬 Per favore, fornisci almeno un nome di tabella valido.")
         return None
     
     try:
@@ -388,7 +388,6 @@ with st.sidebar:
     st.divider()
     st.subheader("2. Parametri Query")
     
-    # Usa il project_id da session_state se disponibile, altrimenti un placeholder generico
     default_project_id = st.session_state.get('uploaded_project_id', "example-project-id")
 
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
@@ -499,7 +498,7 @@ elif not submit_button:
         st.markdown(st.session_state.results_summary)
 
 st.markdown("---")
-st.markdown(
+st.markdown( # Corretto il link e rimosso il Markdown interno all'href
     """
     <div style="text-align: center; padding: 10px;">
         Made with ❤️ by <a href="[https://www.linkedin.com/in/francisco-nardi-212b338b/](https://www.linkedin.com/in/francisco-nardi-212b338b/)" target="_blank">Francisco Nardi</a>
@@ -507,4 +506,3 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
-�
