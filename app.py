@@ -29,15 +29,16 @@ atexit.register(_cleanup_temp_creds_file)
 
 def load_credentials_from_uploaded_file(uploaded_file):
     global _temp_gcp_creds_file_path
-    # Pulisci vecchie credenziali temporanee se presenti
+    # Pulisci vecchie credenziali temporanee se presenti e la variabile d'ambiente
     if _temp_gcp_creds_file_path and os.path.exists(_temp_gcp_creds_file_path):
         try:
             os.remove(_temp_gcp_creds_file_path)
         except Exception:
             pass
-        _temp_gcp_creds_file_path = None
-        if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
-            del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+    _temp_gcp_creds_file_path = None # Resetta il percorso
+    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+        del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+    st.session_state.uploaded_project_id = None # Resetta project_id da upload precedente
 
 
     if uploaded_file is not None:
@@ -48,6 +49,8 @@ def load_credentials_from_uploaded_file(uploaded_file):
                 creds_dict = json.loads(gcp_sa_json_str)
                 # Estrai project_id e salvalo in session_state
                 st.session_state.uploaded_project_id = creds_dict.get("project_id")
+                if not st.session_state.uploaded_project_id:
+                    st.warning("Il file JSON caricato non contiene un 'project_id'. Sarà necessario inserirlo manualmente.")
             except json.JSONDecodeError as json_err:
                 st.error(f"Il file caricato non contiene un JSON valido: {json_err}.")
                 st.session_state.uploaded_project_id = None
@@ -63,8 +66,14 @@ def load_credentials_from_uploaded_file(uploaded_file):
         except Exception as e:
             st.error(f"Errore durante il caricamento del file delle credenziali: {e}")
             st.session_state.uploaded_project_id = None
+            # Assicurati che l'env var sia pulita in caso di errore dopo averla impostata
+            if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+                del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
             return False
+    # Se uploaded_file è None, assicurati che lo stato rifletta questo
     st.session_state.uploaded_project_id = None
+    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ: # Pulisci se il file è stato rimosso
+        del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
     return False
 
 # --- Fine Setup Credenziali GCP ---
@@ -322,8 +331,9 @@ if 'last_prompt' not in st.session_state:
     st.session_state.last_prompt = ""
 if 'current_schema_config_key' not in st.session_state:
     st.session_state.current_schema_config_key = ""
-if 'creds_processed_this_run' not in st.session_state: 
-    st.session_state.creds_processed_this_run = False
+# Nuovo stato per tracciare se il caricamento è avvenuto con successo in questa sessione
+if 'credentials_successfully_loaded_by_app' not in st.session_state:
+    st.session_state.credentials_successfully_loaded_by_app = False
 
 
 with st.sidebar:
@@ -337,22 +347,37 @@ with st.sidebar:
     )
 
     if uploaded_credential_file:
-        # Processa il file solo se non è già stato processato in questa esecuzione (per evitare loop con rerun)
-        if not st.session_state.get(f"processed_{uploaded_credential_file.id}", False):
+        # Processa il file solo se è un nuovo file o se le credenziali non sono già state caricate con successo
+        # Questo previene il riprocessamento ad ogni rerun se lo stesso file è ancora selezionato
+        if not st.session_state.credentials_successfully_loaded_by_app or \
+           st.session_state.get("last_uploaded_file_id") != uploaded_credential_file.id:
+            
             if load_credentials_from_uploaded_file(uploaded_credential_file):
+                st.session_state.credentials_successfully_loaded_by_app = True
+                st.session_state.last_uploaded_file_id = uploaded_credential_file.id
                 st.success("File credenziali caricato e processato!")
-                st.session_state[f"processed_{uploaded_credential_file.id}"] = True
                 st.rerun() 
             else:
+                st.session_state.credentials_successfully_loaded_by_app = False
+                st.session_state.last_uploaded_file_id = None # Resetta se il caricamento fallisce
                 st.error("Errore nel processare il file delle credenziali.")
-                # Non settare processed_this_run a True in caso di errore, per permettere un nuovo tentativo
-    # Se il file viene rimosso (uploaded_credential_file diventa None), resetta lo stato di processamento
-    # Questo non è direttamente gestibile qui senza un meccanismo di "on_change" più complesso per il file_uploader
-    # per ora, il rerun gestirà l'aggiornamento dello stato.
+    elif not uploaded_credential_file and st.session_state.credentials_successfully_loaded_by_app:
+        # Il file è stato rimosso dall'utente dopo un caricamento riuscito
+        if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+            del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+        if _temp_gcp_creds_file_path and os.path.exists(_temp_gcp_creds_file_path):
+            try: os.remove(_temp_gcp_creds_file_path)
+            except: pass
+        st.session_state.credentials_successfully_loaded_by_app = False
+        st.session_state.uploaded_project_id = None
+        st.session_state.last_uploaded_file_id = None
+        print("DEBUG: Credenziali e file temporaneo rimossi perché il file è stato deselezionato.")
+        st.rerun()
 
-    # Logica per mostrare lo stato delle credenziali
-    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        st.success("Credenziali GCP attive.")
+
+    # Logica per mostrare lo stato delle credenziali basata sul caricamento dell'app
+    if st.session_state.credentials_successfully_loaded_by_app:
+        st.success("Credenziali GCP caricate tramite file e attive.")
     else:
         st.warning("Per favore, carica il file JSON delle credenziali GCP per continuare.")
 
@@ -405,7 +430,8 @@ with st.form(key='query_form'):
     submit_button = st.form_submit_button(label="Chiedi all'AI ✨")
 
 if submit_button and user_question:
-    gcp_creds_loaded = bool(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+    # La variabile gcp_creds_loaded ora si basa sullo stato dell'app
+    gcp_creds_loaded = st.session_state.credentials_successfully_loaded_by_app
 
     if not gcp_creds_loaded:
         st.error("Per favore, carica il file JSON delle credenziali GCP nella sidebar.")
