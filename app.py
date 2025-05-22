@@ -12,6 +12,20 @@ import atexit
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
 
+# --- Stile CSS Globale per ingrandire il testo dei messaggi AI ---
+# Questo CSS aumenta la dimensione del font dei paragrafi e degli elementi di lista
+# all'interno dei messaggi di chat generati dall'AI.
+# L'emoji dell'avatar non è influenzata, ma le emoji nel testo lo saranno.
+st.markdown("""
+<style>
+    div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] p,
+    div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] li {
+        font-size: 1.25em !important; /* Puoi aggiustare 1.25em a tuo piacimento, es. 1.5em, 20px, etc. */
+    }
+</style>
+""", unsafe_allow_html=True)
+
+
 # --- Inizio Setup Credenziali GCP (CON FILE UPLOAD) ---
 _temp_gcp_creds_file_path = None
 
@@ -473,7 +487,6 @@ if submit_button and user_question:
                 
                 if st.session_state.results_summary and st.session_state.results_summary != "Non ci sono dati da riassumere.":
                     with st.chat_message("ai", avatar="🤖"):
-                        # Rimosso lo stile HTML per l'ingrandimento, usa il rendering Markdown standard
                         st.markdown(st.session_state.results_summary) 
                 elif st.session_state.query_results.empty or st.session_state.results_summary == "Non ci sono dati da riassumere.": 
                      st.info("🤖💬 La query non ha restituito risultati da riassumere o non ci sono dati.")
