@@ -10,7 +10,7 @@ import json
 import atexit
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
-st.set_page_config(layout="wide", page_title="Conversa con GSC via BigQuery")
+st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
 
 # --- Inizio Setup Credenziali GCP (CON FILE UPLOAD) ---
 _temp_gcp_creds_file_path = None
@@ -273,8 +273,8 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
 
 
 # --- Interfaccia Streamlit ---
-st.title("💬 Conversa con i tuoi dati di Google Search Console")
-st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati in BigQuery. L'AI la tradurrà in SQL!")
+st.title("Benvenuto su ChatGSC 🤖💬")
+st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati in BigQuery. L'AI la tradurrà in SQL e ti risponderà!")
 
 expander_title_text = "ℹ️ Istruzioni per la Configurazione Iniziale"
 
