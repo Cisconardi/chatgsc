@@ -152,7 +152,7 @@ Se hai domande su questa Informativa sulla Privacy, contattaci a:
 info@francisconardi.it
 
 ---
-*Nota Importante: Questa è una bozza generica. Dovrai adattarla specificamente alle funzionalità della tua app (ad esempio, se memorizzi la cronologia delle chat, come gestisci i token di aggiornamento OAuth, ecc.) e assicurarti che sia conforme alle leggi sulla privacy come il GDPR (se applicabile).*
+
 """
 
 # --- Funzioni Core ---
