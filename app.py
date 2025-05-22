@@ -91,7 +91,7 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
         st.error("🤖💬 Le credenziali GCP non sono state caricate. Carica il file JSON e applica la configurazione.")
         return None
     if not project_id or not dataset_id or not table_names_str:
-        st.error("🤖💬 ID Progetto, ID Dataset e Nomi Tabelle sono necessari per recuperare lo schema.")
+        st.error("�💬 ID Progetto, ID Dataset e Nomi Tabelle sono necessari per recuperare lo schema.")
         return None
 
     table_names = [name.strip() for name in table_names_str.split(',') if name.strip()]
@@ -440,41 +440,59 @@ if submit_button and user_question:
             )
 
         if st.session_state.sql_query:
-            with st.expander("🔍 Dettagli Tecnici (Query SQL)", expanded=False):
+            # Query SQL e Risultati Grezzi ora in expander
+            with st.expander("🔍 Dettagli Tecnici (Query SQL e Risultati Grezzi)", expanded=False):
+                st.subheader("Query SQL Generata:")
                 st.code(st.session_state.sql_query, language='sql')
             
-            with st.spinner(f"🤖💬 Esecuzione query su BigQuery nel progetto {gcp_project_id}..."):
-                st.session_state.query_results = execute_bigquery_query(gcp_project_id, st.session_state.sql_query)
+                with st.spinner(f"🤖💬 Esecuzione query su BigQuery nel progetto {gcp_project_id}... (visibile solo qui)"):
+                    st.session_state.query_results = execute_bigquery_query(gcp_project_id, st.session_state.sql_query)
 
-            if st.session_state.query_results is not None:
-                if not st.session_state.query_results.empty:
-                     with st.expander("📊 Risultati Grezzi dalla Query (Primi 200)", expanded=False):
+                if st.session_state.query_results is not None:
+                    st.subheader("Risultati Grezzi dalla Query (Primi 200):")
+                    if st.session_state.query_results.empty:
+                        st.info("La query non ha restituito risultati.")
+                    else:
                         st.dataframe(st.session_state.query_results.head(200))
-                
+                else:
+                    st.error("Fallimento esecuzione query BigQuery (vedi errore sopra se presente).")
+            # Fine expander Dettagli Tecnici
+
+            # Generazione e visualizzazione del riassunto (se i risultati della query sono disponibili)
+            if st.session_state.query_results is not None:
                 with st.spinner(f"🤖💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
                     st.session_state.results_summary = summarize_results_with_llm(
                         gcp_project_id, gcp_location, llm_model_name_to_use, 
                         st.session_state.query_results, user_question
                     )
-                if st.session_state.results_summary:
-                    st.subheader("🤖💬:")
-                    st.markdown(st.session_state.results_summary)
-                elif st.session_state.query_results.empty: 
-                     st.info("🤖💬 La query non ha restituito risultati da riassumere.")
-                else: 
+                
+                if st.session_state.results_summary and st.session_state.results_summary != "Non ci sono dati da riassumere.":
+                    st.markdown(f"""
+                    <div style="
+                        background-color: #e7f3fe; 
+                        border-left: 6px solid #2196F3; 
+                        border-radius: 8px; 
+                        padding: 15px 20px; 
+                        margin-top: 15px; 
+                        margin-bottom: 15px;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                    ">
+                        <div style="font-weight: bold; margin-bottom: 8px; color: #1976D2;">ChatGSC 🤖💬</div>
+                        {st.session_state.results_summary.replace("```html", "").replace("```", "")}
+                    </div>
+                    """, unsafe_allow_html=True)
+                elif st.session_state.query_results.empty or st.session_state.results_summary == "Non ci sono dati da riassumere.": 
+                     st.info("🤖💬 La query non ha restituito risultati da riassumere o non ci sono dati.")
+                else: # Se c'erano dati ma il riassunto fallisce per qualche motivo
                     st.warning("🤖💬 Non è stato possibile generare un riassunto, ma la query ha prodotto risultati (vedi dettagli tecnici).")
-
-            else: 
-                st.error("🤖💬 Si è verificato un errore durante l'esecuzione della query su BigQuery.")
+            # else: # Errore esecuzione query già gestito sopra e nell'expander
+            #    st.error("🤖💬 Si è verificato un errore durante l'esecuzione della query su BigQuery (vedi dettagli tecnici).")
         else:
             st.error("Non è stato possibile generare una query SQL per la tua domanda.")
             if 'last_prompt' in st.session_state and st.session_state.last_prompt:
                  with st.expander("Debug: Ultimo Prompt Inviato all'LLM per SQL"):
                     st.code(st.session_state.last_prompt, language='text')
 
-# Non mostrare i risultati precedenti se il form non è stato inviato, per mantenere la UI pulita
-# elif not submit_button: 
-# ... (logica precedente per mostrare risultati precedenti è stata rimossa per semplicità)
 
 st.markdown("---")
 st.markdown(
@@ -485,3 +503,4 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+�
