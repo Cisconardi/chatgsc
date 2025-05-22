@@ -339,7 +339,7 @@ if 'credentials_successfully_loaded_by_app' not in st.session_state:
 with st.sidebar:
     st.header("⚙️ Configurazione")
 
-    st.subheader("1. Carica File Credenziali GCP (JSON)")
+    st.subheader("1. Carica File Credenziali Google Cloud Platform (JSON)")
     uploaded_credential_file = st.file_uploader(
         "Seleziona il file JSON della chiave del tuo account di servizio GCP", 
         type="json", 
