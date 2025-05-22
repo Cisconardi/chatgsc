@@ -17,7 +17,7 @@ st.markdown("""
 <style>
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] p,
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] li {
-        font-size: 3em !important; 
+        font-size: 1.25em !important; 
     }
 </style>
 """, unsafe_allow_html=True)
@@ -95,63 +95,67 @@ def load_credentials_from_uploaded_file(uploaded_file):
 # Modello Gemini da utilizzare
 TARGET_GEMINI_MODEL = "gemini-2.0-flash-001"
 
-# --- Testo Privacy Policy --- (Dall'artefatto privacy_policy_oauth_chatgsc)
+# --- Testo Privacy Policy ---
 PRIVACY_POLICY_TEXT = """
 **Informativa sulla Privacy per ChatGSC**
 
-**Ultimo aggiornamento:** 22 Maggio 2025 
+**Ultimo aggiornamento:** [INSERISCI DATA QUI]
 
-Benvenuto in ChatGSC! La tua privacy è importante per noi. Questa Informativa sulla Privacy spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le tue informazioni quando utilizzi la nostra applicazione ChatGSC per interagire con i tuoi dati di Google Search Console tramite Google BigQuery e Vertex AI. Questa versione dell'app utilizza il caricamento di un file di credenziali JSON dell'account di servizio Google Cloud per l'autenticazione.
+Benvenuto in ChatGSC! La tua privacy è importante per noi. Questa Informativa sulla Privacy spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le tue informazioni quando utilizzi la nostra applicazione ChatGSC per interagire con i tuoi dati di Google Search Console tramite Google BigQuery e Vertex AI, utilizzando l'autenticazione OAuth 2.0 di Google.
 
 **1. Informazioni che Raccogliamo**
 
-* **File di Credenziali dell'Account di Servizio Google Cloud:** Per funzionare, l'applicazione richiede di caricare un file JSON contenente le credenziali di un account di servizio Google Cloud. Questo file contiene informazioni sensibili (come chiavi private) che permettono all'applicazione di agire per conto di tale account di servizio per accedere alle risorse Google Cloud (BigQuery e Vertex AI) specificate nel tuo progetto. **Questo file viene elaborato localmente nel browser o temporaneamente sul server durante l'esecuzione dell'app per impostare l'autenticazione, ma non viene memorizzato in modo persistente dall'applicazione ChatGSC stessa oltre la durata della sessione di utilizzo o la necessità di autenticazione.**
-* **Dati di Google Search Console:** Quando fornisci le credenziali e configuri l'ID del progetto, l'ID del dataset e i nomi delle tabelle, l'applicazione (agendo tramite l'account di servizio) accederà ai dati del tuo Google Search Console archiviati nel tuo progetto Google BigQuery. Questi dati includono metriche di performance del sito web come query di ricerca, clic, impressioni, CTR, posizione media, URL delle pagine, ecc. L'applicazione legge questi dati solo per rispondere alle tue domande.
-* **Interazioni con l'AI:** Le domande che poni all'AI e le risposte generate vengono processate tramite i servizi di Google Cloud Vertex AI, utilizzando l'autenticazione fornita dal tuo account di servizio.
+Quando utilizzi ChatGSC con l'autenticazione OAuth 2.0, potremmo raccogliere le seguenti informazioni:
+
+* **Informazioni sull'Account Google:** Quando ti autentichi utilizzando OAuth 2.0, riceviamo informazioni di base dal tuo profilo Google necessarie per stabilire una connessione sicura e per identificarti come utente autorizzato. Questo di solito include il tuo indirizzo email e informazioni di profilo di base. Non memorizziamo la tua password di Google.
+* **Dati di Google Search Console:** Con il tuo esplicito consenso tramite il flusso OAuth 2.0, l'applicazione accederà ai dati del tuo Google Search Console archiviati nel tuo progetto Google BigQuery. Questi dati includono metriche di performance del sito web come query di ricerca, clic, impressioni, CTR, posizione media, URL delle pagine, ecc. L'applicazione legge questi dati solo per rispondere alle tue domande.
+* **Dati di Utilizzo dell'Applicazione (Opzionale):** Potremmo raccogliere informazioni anonime su come utilizzi ChatGSC (es. tipi di domande poste, funzionalità utilizzate) per migliorare l'applicazione. Questi dati sono aggregati e non identificabili personalmente.
+* **Interazioni con l'AI:** Le domande che poni all'AI e le risposte generate vengono processate tramite i servizi di Vertex AI.
 
 **2. Come Utilizziamo le Tue Informazioni**
 
 Utilizziamo le informazioni raccolte per:
 
-* **Fornire e Personalizzare il Servizio:** Per autenticare l'accesso ai tuoi dati GCP, permetterti di interagire con i tuoi dati di Google Search Console, generare query SQL ed elaborare risposte tramite Vertex AI.
-* **Funzionamento dell'Applicazione:** Il file di credenziali è usato esclusivamente per consentire all'applicazione di effettuare chiamate API autenticate a Google BigQuery e Vertex AI per tuo conto.
+* **Fornire e Personalizzare il Servizio:** Per autenticarti, permetterti di interagire con i tuoi dati di Google Search Console, generare query SQL ed elaborare risposte tramite Vertex AI.
+* **Migliorare l'Applicazione:** Per analizzare l'utilizzo e migliorare le funzionalità e l'esperienza utente di ChatGSC.
+* **Comunicazioni (se applicabile):** Per inviarti aggiornamenti importanti sull'applicazione o rispondere a tue richieste di supporto.
 
 **3. Condivisione e Divulgazione delle Informazioni**
 
-Non vendiamo né affittiamo le tue informazioni o il contenuto del tuo file di credenziali a terzi.
+Non vendiamo né affittiamo le tue informazioni personali a terzi. Potremmo condividere le tue informazioni solo nelle seguenti circostanze:
 
-* **Con i Servizi Google Cloud Platform:** Le tue domande e i dati di Search Console vengono processati tramite Google BigQuery e Vertex AI utilizzando le credenziali dell'account di servizio che hai fornito. L'utilizzo di questi servizi è soggetto alle informative sulla privacy e ai termini di servizio di Google Cloud. L'applicazione ChatGSC agisce come un client di questi servizi.
-* **File di Credenziali:** Il file di credenziali JSON caricato viene utilizzato per creare un file temporaneo sul server dove l'app è in esecuzione, al solo scopo di impostare la variabile d'ambiente `GOOGLE_APPLICATION_CREDENTIALS` per l'autenticazione delle librerie client di Google. Questo file temporaneo viene eliminato al termine della sessione dello script.
-* **Per Requisiti Legali:** Se richiesto dalla legge o in risposta a validi processi legali.
+* **Con i Servizi Google Cloud Platform:** Le tue domande e i dati di Search Console vengono processati tramite Google BigQuery e Vertex AI come parte integrante del funzionamento dell'applicazione. L'utilizzo di questi servizi è soggetto alle informative sulla privacy di Google Cloud.
+* **Per Requisiti Legali:** Se richiesto dalla legge o in risposta a validi processi legali (es. un'ordinanza del tribunale).
+* **Con il Tuo Consenso:** Per qualsiasi altra finalità, solo con il tuo esplicito consenso.
 
 **4. Sicurezza dei Dati**
 
-* **Credenziali dell'Account di Servizio:** È tua responsabilità gestire la sicurezza del file JSON del tuo account di servizio prima di caricarlo. L'applicazione utilizza il file per l'autenticazione durante la sessione. Ti consigliamo di utilizzare account di servizio con i permessi minimi necessari (principio del privilegio minimo) per le operazioni che ChatGSC deve eseguire.
-* **Trasmissione Dati:** Quando interagisci con l'applicazione, i dati vengono trasmessi tramite protocolli sicuri (HTTPS).
+Adottiamo misure ragionevoli per proteggere le tue informazioni da accessi non autorizzati, alterazione, divulgazione o distruzione. L'accesso ai tuoi dati di Google Search Console avviene tramite il protocollo sicuro OAuth 2.0 e i token di accesso sono gestiti in modo sicuro. Tuttavia, nessuna trasmissione via Internet o metodo di archiviazione elettronica è sicuro al 100%.
 
 **5. Conservazione dei Dati**
 
-* **File di Credenziali Caricato:** Il contenuto del file di credenziali viene utilizzato per creare un file temporaneo che persiste solo per la durata dell'esecuzione dello script dell'applicazione. Viene fatto un tentativo di eliminare questo file temporaneo alla chiusura dello script.
-* **Dati di Search Console:** Non archiviamo copie permanenti dei tuoi dati di Google Search Console. I dati vengono letti da BigQuery "on-demand".
-* **Stato dell'Applicazione:** Alcune informazioni di stato (come l'ID del progetto o l'ID dell'ultimo file caricato per evitare riprocessamenti non necessari durante una sessione) possono essere conservate nello stato della sessione di Streamlit, che è temporaneo e legato alla tua sessione corrente nel browser.
+* **Token OAuth:** Conserviamo i token di accesso OAuth solo per la durata necessaria a mantenere attiva la tua sessione o come consentito da Google.
+* **Dati di Search Console:** Non archiviamo copie permanenti dei tuoi dati di Google Search Console. I dati vengono letti da BigQuery "on-demand" per rispondere alle tue domande.
+* **Cronologia delle Query (se implementata):** Se l'applicazione implementa una cronologia delle query, questa verrà conservata solo per la tua comodità e potrai avere la possibilità di cancellarla.
 
-**6. I Tuoi Diritti e Responsabilità**
+**6. I Tuoi Diritti**
 
-* Hai il controllo sul file JSON del tuo account di servizio.
-* Sei responsabile della gestione dei permessi IAM associati all'account di servizio che utilizzi con questa applicazione.
-* Puoi interrompere l'uso dell'applicazione in qualsiasi momento.
+In base alla tua giurisdizione, potresti avere determinati diritti riguardo alle tue informazioni personali, come il diritto di accedere, correggere o richiedere la cancellazione dei tuoi dati. Puoi revocare in qualsiasi momento l'accesso dell'applicazione ai tuoi dati Google tramite le impostazioni di sicurezza del tuo Account Google.
 
 **7. Modifiche a Questa Informativa sulla Privacy**
 
-Potremmo aggiornare questa Informativa sulla Privacy di tanto in tanto. Ti informeremo di eventuali modifiche pubblicando la nuova Informativa sulla Privacy sull'applicazione.
+Potremmo aggiornare questa Informativa sulla Privacy di tanto in tanto. Ti informeremo di eventuali modifiche pubblicando la nuova Informativa sulla Privacy sull'applicazione. Ti consigliamo di rivedere periodicamente questa Informativa sulla Privacy per eventuali modifiche.
 
 **8. Contattaci**
 
-Se hai domande su questa Informativa sulla Privacy, contattaci a: [La tua Email di Contatto o Metodo di Contatto]
+Se hai domande su questa Informativa sulla Privacy, contattaci a:
+[LA TUA EMAIL DI CONTATTO O METODO DI CONTATTO]
+
+---
+*Nota Importante: Questa è una bozza generica. Dovrai adattarla specificamente alle funzionalità della tua app (ad esempio, se memorizzi la cronologia delle chat, come gestisci i token di aggiornamento OAuth, ecc.) e assicurarti che sia conforme alle leggi sulla privacy come il GDPR (se applicabile).*
 """
 
 # --- Funzioni Core ---
-# (Il resto delle funzioni core rimane invariato)
 def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_str: str) -> str | None:
     if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
         st.error("🤖💬 Le credenziali GCP non sono state caricate. Carica il file JSON e applica la configurazione.")
@@ -380,7 +384,7 @@ if 'last_uploaded_file_id_processed_successfully' not in st.session_state:
     st.session_state.last_uploaded_file_id_processed_successfully = None
 if 'config_applied_successfully' not in st.session_state: 
     st.session_state.config_applied_successfully = False
-if 'show_privacy_policy' not in st.session_state: # Per il dialogo della privacy
+if 'show_privacy_policy' not in st.session_state: 
     st.session_state.show_privacy_policy = False
 
 
@@ -556,22 +560,27 @@ if submit_button and user_question:
 
 # Footer e Dialogo Privacy Policy
 st.markdown("---")
-col_footer_1, col_footer_2 = st.columns([0.8, 0.2])
+col_footer_1, col_footer_2 = st.columns([0.8, 0.2]) # Rapporto per allineare meglio il pulsante
 with col_footer_1:
     st.markdown(
         """
-        <div style="text-align: left; padding-top: 10px; padding-bottom: 10px;">
-            Made with ❤️ by <a href="[https://www.linkedin.com/in/francisco-nardi-212b338b/](https://www.linkedin.com/in/francisco-nardi-212b338b/)" target="_blank">Francisco Nardi</a>
+        <div style="text-align: left; padding-top: 10px; padding-bottom: 10px; display: flex; align-items: center;">
+            Made with ❤️ by <a href="[https://www.linkedin.com/in/francisco-nardi-212b338b/](https://www.linkedin.com/in/francisco-nardi-212b338b/)" target="_blank" style="text-decoration: none; color: inherit;">Francisco Nardi</a>
         </div>
         """,
         unsafe_allow_html=True
     )
 with col_footer_2:
-    if st.button("Informativa Privacy", key="privacy_button", help="Leggi l'informativa sulla privacy"):
+    # Usare un container per allineare il pulsante a destra e verticalmente al centro
+    # La spaziatura potrebbe richiedere aggiustamenti
+    st.markdown('<div style="display: flex; align-items: center; justify-content: flex-end; height: 100%;">', unsafe_allow_html=True)
+    if st.button("Privacy Policy", key="privacy_button_popup", help="Leggi l'informativa sulla privacy"):
         st.session_state.show_privacy_policy = True
+    st.markdown('</div>', unsafe_allow_html=True)
+
 
 if st.session_state.get('show_privacy_policy', False):
-    with st.dialog("Informativa sulla Privacy", width="large"):
+    with st.dialog("Informativa sulla Privacy", width="large"): # Assicurati che st.dialog sia disponibile (Streamlit >= 1.33.0)
         st.markdown(PRIVACY_POLICY_TEXT)
         if st.button("Chiudi", key="close_privacy_dialog"):
             st.session_state.show_privacy_policy = False
