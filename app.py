@@ -10,11 +10,10 @@ import json
 import atexit
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
-st.set_page_config(layout="wide", page_title="Benvenuto su ChatGSC")
+st.set_page_config(layout="wide", page_title="Conversa con GSC via BigQuery")
 
 # --- Inizio Setup Credenziali GCP (CON FILE UPLOAD) ---
 _temp_gcp_creds_file_path = None
-# _creds_loaded_from_upload = False # Non più necessario, controlliamo os.getenv
 
 def _cleanup_temp_creds_file():
     global _temp_gcp_creds_file_path
@@ -265,8 +264,8 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
 
 
 # --- Interfaccia Streamlit ---
-st.title("Benvenuto su ChatGSC 🤖💬")
-st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati in BigQuery. L'AI la tradurrà in SQL e ti risponderà!")
+st.title("💬 Conversa con i tuoi dati di Google Search Console")
+st.caption("Fai una domanda in linguaggio naturale sui tuoi dati GSC archiviati in BigQuery. L'AI la tradurrà in SQL!")
 
 expander_title_text = "ℹ️ Istruzioni per la Configurazione Iniziale"
 
@@ -323,7 +322,7 @@ if 'last_prompt' not in st.session_state:
     st.session_state.last_prompt = ""
 if 'current_schema_config_key' not in st.session_state:
     st.session_state.current_schema_config_key = ""
-if 'creds_processed_this_run' not in st.session_state: # Per evitare ricaricamenti multipli
+if 'creds_processed_this_run' not in st.session_state: 
     st.session_state.creds_processed_this_run = False
 
 
@@ -334,32 +333,33 @@ with st.sidebar:
     uploaded_credential_file = st.file_uploader(
         "Seleziona il file JSON della chiave del tuo account di servizio GCP", 
         type="json", 
-        key="credential_uploader" # Aggiungi una chiave per resettare lo stato se necessario
+        key="credential_uploader" 
     )
 
-    if uploaded_credential_file and not st.session_state.creds_processed_this_run :
-        if load_credentials_from_uploaded_file(uploaded_credential_file):
-            st.success("File credenziali caricato e processato!")
-            st.session_state.creds_processed_this_run = True # Impedisce riprocessamento immediato
-             # Forza un rerun per aggiornare il valore del text_input del project_id
-            st.rerun() 
-        else:
-            st.error("Errore nel processare il file delle credenziali.")
-            st.session_state.creds_processed_this_run = True # Anche in caso di errore, per evitare loop
-    elif not uploaded_credential_file:
-        st.session_state.creds_processed_this_run = False # Resetta se il file viene rimosso
+    if uploaded_credential_file:
+        # Processa il file solo se non è già stato processato in questa esecuzione (per evitare loop con rerun)
+        if not st.session_state.get(f"processed_{uploaded_credential_file.id}", False):
+            if load_credentials_from_uploaded_file(uploaded_credential_file):
+                st.success("File credenziali caricato e processato!")
+                st.session_state[f"processed_{uploaded_credential_file.id}"] = True
+                st.rerun() 
+            else:
+                st.error("Errore nel processare il file delle credenziali.")
+                # Non settare processed_this_run a True in caso di errore, per permettere un nuovo tentativo
+    # Se il file viene rimosso (uploaded_credential_file diventa None), resetta lo stato di processamento
+    # Questo non è direttamente gestibile qui senza un meccanismo di "on_change" più complesso per il file_uploader
+    # per ora, il rerun gestirà l'aggiornamento dello stato.
 
-
-    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        st.warning("Per favore, carica il file JSON delle credenziali GCP per continuare.")
+    # Logica per mostrare lo stato delle credenziali
+    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        st.success("Credenziali GCP attive.")
     else:
-        st.success("Credenziali GCP caricate.")
+        st.warning("Per favore, carica il file JSON delle credenziali GCP per continuare.")
 
 
     st.divider()
     st.subheader("2. Parametri Query")
     
-    # Usa il project_id da session_state se disponibile, altrimenti il default
     default_project_id = st.session_state.get('uploaded_project_id', "nlp-project-448915")
 
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
