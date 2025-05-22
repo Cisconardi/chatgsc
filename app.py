@@ -273,7 +273,7 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
 
 # --- Interfaccia Streamlit ---
 st.title("Ciao, sono ChatGSC 🤖💬")
-st.caption("Fai una domanda in linguaggio naturale sui tuoi dati di Google Search Console archiviati in BigQuery. La mia AI la tradurrà in SQL e ti risponderò!")
+st.caption("Fammi una domanda sui tuoi dati di Google Search Console archiviati in BigQuery. La mia AI la tradurrà in SQL e ti risponderò!")
 
 expander_title_text = "ℹ️ Istruzioni per la Configurazione Iniziale"
 
