@@ -226,7 +226,6 @@ def summarize_results_with_llm(project_id: str, location: str, model_name: str, 
         if len(results_df) > 20:
             results_sample_text += f"\n... e altre {len(results_df)-20} righe."
         
-        # Prompt migliorato per il grassetto
         prompt = f"""
 Data la seguente domanda dell'utente:
 "{original_question}"
@@ -474,8 +473,8 @@ if submit_button and user_question:
                 
                 if st.session_state.results_summary and st.session_state.results_summary != "Non ci sono dati da riassumere.":
                     with st.chat_message("ai", avatar="🤖"):
-                        styled_summary = f"<div style='font-size: 1.6em;'>{st.session_state.results_summary}</div>"
-                        st.markdown(styled_summary, unsafe_allow_html=True)
+                        # Rimosso lo stile HTML per l'ingrandimento, usa il rendering Markdown standard
+                        st.markdown(st.session_state.results_summary) 
                 elif st.session_state.query_results.empty or st.session_state.results_summary == "Non ci sono dati da riassumere.": 
                      st.info("🤖💬 La query non ha restituito risultati da riassumere o non ci sono dati.")
                 else: 
