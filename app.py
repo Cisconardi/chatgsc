@@ -17,7 +17,7 @@ st.markdown("""
 <style>
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] p,
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] li {
-        font-size: 1.25em !important; /* Puoi aggiustare 1.25em a tuo piacimento */
+        font-size: 3em !important; 
     }
 </style>
 """, unsafe_allow_html=True)
@@ -281,7 +281,7 @@ def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | No
         # st.info(f"Esecuzione query su BigQuery...") # Nascosto
         query_job = client.query(sql_query)
         results_df = query_job.to_dataframe() 
-        # st.success(f"�💬 Query completata! {len(results_df)} righe restituite.") # Nascosto
+        # st.success(f"🤖💬 Query completata! {len(results_df)} righe restituite.") # Nascosto
         return results_df
     except Exception as e:
         st.error(f"🤖💬 Errore durante l'esecuzione della query BigQuery: {e}")
@@ -331,7 +331,7 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
         return "Errore nella generazione del riassunto."
 
 # --- Interfaccia Streamlit ---
-st.title("Ciao, sono ChatGSC 🤖💬")
+st.title("Ciao, sono ChatGSC 🤖�")
 st.caption("Fammi una domanda sui tuoi dati di Google Search Console archiviati in BigQuery. La mia AI la tradurrà in SQL e ti risponderò!")
 
 expander_title_text = "ℹ️ Istruzioni per la Configurazione Iniziale"
@@ -462,10 +462,10 @@ with st.sidebar:
     st.markdown(f"ℹ️ Modello AI utilizzato: **{TARGET_GEMINI_MODEL}**.")
     few_shot_examples = "" # Gli esempi few-shot sono nascosti ma la variabile è mantenuta
 
-    st.divider()
-    # Rimosso enable_summary checkbox
+    st.divider() # Primo divider
+    st.markdown("⚠️ **Nota sui Costi:** L'utilizzo di questa applicazione comporta chiamate alle API di Google Cloud Platform (Vertex AI, BigQuery) che sono soggette a costi. Assicurati di comprendere e monitorare i [prezzi di GCP](https://cloud.google.com/pricing).", unsafe_allow_html=True)
+    st.divider() # Secondo divider
     
-    st.divider()
     apply_config_button = st.button("Applica Configurazione", key="apply_config")
 
     if apply_config_button:
@@ -517,20 +517,18 @@ with st.form(key='query_form'):
         value=st.session_state.get("user_question_from_button", ""),
         height=100, 
         placeholder="Es. Quante impressioni ho ricevuto la scorsa settimana per le query che contengono 'AI'?",
-        key="user_question_text_area" # Aggiunta chiave per poterla modificare programmaticamente
+        key="user_question_text_area" 
     )
     submit_button_main = st.form_submit_button(label="Chiedi a ChatGSC 💬")
 
 st.write("Oppure prova una di queste domande rapide (clicca per avviare l'analisi):")
-preset_questions_row1_new = [
+preset_questions_data = [
     ("Clic Query (7gg)", "Quali sono le mie query con più clic negli ultimi 7 giorni?"),
     ("Clic Pagine (7gg)", "Quali sono le mie pagine con più clic negli ultimi 7 giorni?"),
     ("Clic Query (28gg)", "Quali sono le mie query con più clic negli ultimi 28 giorni?"),
     ("Clic Pagine (28gg)", "Quali sono le mie pagine con più clic negli ultimi 28 giorni?"),
     ("Impr. Query (28gg)", "Quali sono le mie query con più impressioni negli ultimi 28 giorni?"),
-    ("Impr. Pagine (28gg)", "Quali sono le mie pagine con più impressioni negli ultimi 28 giorni?")
-]
-preset_questions_row2_new = [
+    ("Impr. Pagine (28gg)", "Quali sono le mie pagine con più impressioni negli ultimi 28 giorni?"),
     ("Perf. Totale (3M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 3 mesi?"),
     ("Perf. Totale (6M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 6 mesi?"),
     ("Perf. Totale (12M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 12 mesi?"),
@@ -539,31 +537,32 @@ preset_questions_row2_new = [
     ("Confronto Clic (Mese Prec.)", "Confronta i clic totali di questo mese con quelli del mese precedente.")
 ]
 
-cols_r1 = st.columns(len(preset_questions_row1_new))
-for i, (label, question_text) in enumerate(preset_questions_row1_new):
-    if cols_r1[i].button(label, key=f"preset_q_r1_new_{i}"):
-        st.session_state.user_question_from_button = question_text
-        st.session_state.submit_from_preset_button = True
-        st.rerun()
+# Calcola il numero di pulsanti per riga (massimo 4 per un buon layout)
+buttons_per_row = 4
+num_rows = (len(preset_questions_data) + buttons_per_row - 1) // buttons_per_row
 
-cols_r2 = st.columns(len(preset_questions_row2_new))
-for i, (label, question_text) in enumerate(preset_questions_row2_new):
-    if cols_r2[i].button(label, key=f"preset_q_r2_new_{i}"):
-        st.session_state.user_question_from_button = question_text
-        st.session_state.submit_from_preset_button = True
-        st.rerun()
+for i in range(num_rows):
+    cols = st.columns(buttons_per_row)
+    for j in range(buttons_per_row):
+        button_index = i * buttons_per_row + j
+        if button_index < len(preset_questions_data):
+            label, question_text = preset_questions_data[button_index]
+            if cols[j].button(label, key=f"preset_q_{button_index}"):
+                st.session_state.user_question_from_button = question_text
+                st.session_state.submit_from_preset_button = True
+                st.rerun()
+        else:
+            cols[j].empty() # Lascia vuota la colonna se non ci sono più pulsanti
 
 # Logica di gestione del submit
-# Determina la domanda da processare: o dall'input diretto o da un pulsante preimpostato
 question_to_process = ""
 if st.session_state.get('submit_from_preset_button', False):
     question_to_process = st.session_state.get("user_question_from_button", "")
-    # Resetta i flag per il prossimo ciclo
     st.session_state.submit_from_preset_button = False 
-    st.session_state.user_question_from_button = "" # Pulisce dopo averla usata
+    st.session_state.user_question_from_button = "" 
 elif submit_button_main and user_question_input:
     question_to_process = user_question_input
-    st.session_state.user_question_from_button = "" # Pulisce se l'utente ha scritto manualmente
+    st.session_state.user_question_from_button = "" 
 
 if question_to_process:
     if not st.session_state.config_applied_successfully:
