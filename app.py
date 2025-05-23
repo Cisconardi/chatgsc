@@ -17,7 +17,7 @@ st.markdown("""
 <style>
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] p,
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] li {
-        font-size: 3em !important; 
+        font-size: 1.25em !important; /* Puoi aggiustare 1.25em a tuo piacimento */
     }
 </style>
 """, unsafe_allow_html=True)
@@ -95,7 +95,7 @@ def load_credentials_from_uploaded_file(uploaded_file):
 # Modello Gemini da utilizzare
 TARGET_GEMINI_MODEL = "gemini-2.0-flash-001"
 
-# --- Testo Privacy Policy ---
+# --- Testo Privacy Policy (dal codice fornito dall'utente) ---
 PRIVACY_POLICY_TEXT = """
 **Informativa sulla Privacy per ChatGSC**
 
@@ -331,7 +331,7 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
         return "Errore nella generazione del riassunto."
 
 # --- Interfaccia Streamlit ---
-st.title("Ciao, sono ChatGSC 🤖💬")
+st.title("Ciao, sono ChatGSC 🤖�")
 st.caption("Fammi una domanda sui tuoi dati di Google Search Console archiviati in BigQuery. La mia AI la tradurrà in SQL e ti risponderò!")
 
 expander_title_text = "ℹ️ Istruzioni per la Configurazione Iniziale"
@@ -394,6 +394,8 @@ if 'config_applied_successfully' not in st.session_state:
     st.session_state.config_applied_successfully = False
 if 'show_privacy_policy' not in st.session_state: 
     st.session_state.show_privacy_policy = False
+if 'user_question_from_button' not in st.session_state: # Per le domande preimpostate
+    st.session_state.user_question_from_button = ""
 
 
 def on_config_change():
@@ -456,7 +458,7 @@ with st.sidebar:
     )
     
     st.markdown(f"ℹ️ Modello AI utilizzato: **{TARGET_GEMINI_MODEL}**.")
-    few_shot_examples = "" 
+    few_shot_examples = "" # Gli esempi few-shot sono nascosti ma la variabile è mantenuta
 
     st.divider()
     # Rimosso enable_summary checkbox
@@ -506,12 +508,54 @@ if st.session_state.config_applied_successfully:
                     with st.sidebar.expander("Vedi Schema Caricato per Prompt (Debug)", expanded=False): 
                         st.code(st.session_state.table_schema_for_prompt, language='text')
 
+# Area per le domande preimpostate
+st.write("Oppure prova una di queste domande rapide:")
+preset_questions_row1 = [
+    ("Query Clic (7gg)", "Quali sono le mie query con più clic negli ultimi 7 giorni?"),
+    ("Pagine Clic (7gg)", "Quali sono le mie pagine con più clic negli ultimi 7 giorni?"),
+    ("Query Clic (28gg)", "Quali sono le mie query con più clic negli ultimi 28 giorni?"),
+    ("Pagine Clic (28gg)", "Quali sono le mie pagine con più clic negli ultimi 28 giorni?"),
+    ("Perf. Totale (3M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 3 mesi?")
+]
+preset_questions_row2 = [
+    ("Query Impr. (3M)", "Quali sono le mie query con più impressioni negli ultimi 3 mesi?"),
+    ("Pagine Impr. (6M)", "Quali sono le mie pagine con più impressioni negli ultimi 6 mesi?"),
+    ("Perf. Totale (6M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 6 mesi?"),
+    ("Query Clic (12M)", "Quali sono le mie query con più clic negli ultimi 12 mesi?"),
+    ("Perf. Totale (12M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 12 mesi?")
+]
+
+cols_row1 = st.columns(len(preset_questions_row1))
+for i, (label, question_text) in enumerate(preset_questions_row1):
+    if cols_row1[i].button(label, key=f"preset_q_r1_{i}"):
+        st.session_state.user_question_from_button = question_text
+        # Non c'è bisogno di st.form_submit_button qui, il form verrà sottomesso dal rerun implicito
+        # o l'utente premerà il pulsante principale del form.
+        # Per un invio automatico, dovremmo ristrutturare leggermente o usare un callback sul text_area.
+
+cols_row2 = st.columns(len(preset_questions_row2))
+for i, (label, question_text) in enumerate(preset_questions_row2):
+    if cols_row2[i].button(label, key=f"preset_q_r2_{i}"):
+        st.session_state.user_question_from_button = question_text
+
 
 with st.form(key='query_form'):
-    user_question = st.text_area("La tua domanda:", height=100, placeholder="Es. Quante impressioni ho ricevuto la scorsa settimana per le query che contengono 'AI'?")
+    # Se una domanda preimpostata è stata cliccata, popola il text_area
+    user_question_input = st.text_area(
+        "La tua domanda:", 
+        value=st.session_state.get("user_question_from_button", ""), # Usa il valore dal session_state
+        height=100, 
+        placeholder="Es. Quante impressioni ho ricevuto la scorsa settimana per le query che contengono 'AI'?"
+    )
     submit_button = st.form_submit_button(label="Chiedi a ChatGSC 💬")
 
-if submit_button and user_question:
+    # Dopo che il form è stato sottomesso (o un bottone preimpostato ha causato un rerun),
+    # pulisci la domanda preimpostata per non ripopolarla al prossimo rerun.
+    if submit_button or st.session_state.user_question_from_button:
+        st.session_state.user_question_from_button = ""
+
+
+if submit_button and user_question_input: # Usa user_question_input che ora contiene la domanda
     if not st.session_state.config_applied_successfully:
         st.error("🤖💬 Per favore, completa e applica la configurazione nella sidebar prima di fare domande.")
     elif not st.session_state.table_schema_for_prompt: 
@@ -525,7 +569,7 @@ if submit_button and user_question:
 
         with st.spinner(f"🤖💬 Sto pensando (usando {llm_model_name_to_use}) e generando la query SQL..."):
             st.session_state.sql_query = generate_sql_from_question(
-                gcp_project_id, gcp_location, llm_model_name_to_use, user_question, 
+                gcp_project_id, gcp_location, llm_model_name_to_use, user_question_input, 
                 st.session_state.table_schema_for_prompt, few_shot_examples 
             )
 
@@ -549,7 +593,7 @@ if submit_button and user_question:
                 with st.spinner(f"🤖💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
                     st.session_state.results_summary = summarize_results_with_llm(
                         gcp_project_id, gcp_location, llm_model_name_to_use, 
-                        st.session_state.query_results, user_question
+                        st.session_state.query_results, user_question_input
                     )
                 
                 if st.session_state.results_summary and st.session_state.results_summary != "Non ci sono dati da riassumere.":
@@ -568,12 +612,10 @@ if submit_button and user_question:
 
 # Footer e Dialogo Privacy Policy
 st.markdown("---")
-# Utilizzo di colonne per allineare il pulsante della privacy policy a destra
-# e il testo "Made with" a sinistra.
-left_footer_col, right_footer_col = st.columns([0.85, 0.15])
+left_footer_col, right_footer_col = st.columns([0.85, 0.15]) 
 
 with left_footer_col:
-    st.markdown( # Corretto il link e rimosso il Markdown interno all'href
+    st.markdown(
         """
         <div style="text-align: left; padding-top: 10px; padding-bottom: 10px;">
             Made with ❤️ by <a href="[https://www.linkedin.com/in/francisco-nardi-212b338b/](https://www.linkedin.com/in/francisco-nardi-212b338b/)" target="_blank" style="text-decoration: none; color: inherit;">Francisco Nardi</a>
@@ -583,16 +625,17 @@ with left_footer_col:
     )
 
 with right_footer_col:
-    # Aggiungi un po' di spazio sopra il pulsante per un migliore allineamento verticale se necessario
     st.markdown("<div style='padding-top: 10px;'></div>", unsafe_allow_html=True) 
     if st.button("Privacy Policy", key="privacy_button_popup_footer", help="Leggi l'informativa sulla privacy"):
         st.session_state.show_privacy_policy = True
 
 
 if st.session_state.get('show_privacy_policy', False):
-    # Sostituzione di st.dialog con un blocco condizionale per compatibilità
+    # Utilizzo di un container e markdown per la privacy policy invece di st.dialog
     st.subheader("Informativa sulla Privacy per ChatGSC")
-    st.markdown(PRIVACY_POLICY_TEXT) # Mostra il testo della policy
+    privacy_container = st.container()
+    with privacy_container: # Applica uno scroll se il testo è lungo
+        st.markdown(PRIVACY_POLICY_TEXT, unsafe_allow_html=False) # unsafe_allow_html=False per il markdown standard
     if st.button("Chiudi Informativa", key="close_privacy_policy_main_area"):
         st.session_state.show_privacy_policy = False
-        st.rerun() # Ricarica per nascondere la policy
+        st.rerun() 
