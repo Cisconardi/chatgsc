@@ -281,7 +281,7 @@ def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | No
         # st.info(f"Esecuzione query su BigQuery...") # Nascosto
         query_job = client.query(sql_query)
         results_df = query_job.to_dataframe() 
-        # st.success(f"🤖💬 Query completata! {len(results_df)} righe restituite.") # Nascosto
+        # st.success(f"�💬 Query completata! {len(results_df)} righe restituite.") # Nascosto
         return results_df
     except Exception as e:
         st.error(f"🤖💬 Errore durante l'esecuzione della query BigQuery: {e}")
@@ -331,7 +331,7 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
         return "Errore nella generazione del riassunto."
 
 # --- Interfaccia Streamlit ---
-st.title("Ciao, sono ChatGSC 🤖�")
+st.title("Ciao, sono ChatGSC 🤖💬")
 st.caption("Fammi una domanda sui tuoi dati di Google Search Console archiviati in BigQuery. La mia AI la tradurrà in SQL e ti risponderò!")
 
 expander_title_text = "ℹ️ Istruzioni per la Configurazione Iniziale"
@@ -394,8 +394,10 @@ if 'config_applied_successfully' not in st.session_state:
     st.session_state.config_applied_successfully = False
 if 'show_privacy_policy' not in st.session_state: 
     st.session_state.show_privacy_policy = False
-if 'user_question_from_button' not in st.session_state: # Per le domande preimpostate
+if 'user_question_from_button' not in st.session_state: 
     st.session_state.user_question_from_button = ""
+if 'submit_from_preset_button' not in st.session_state: # Nuovo stato per triggerare submit
+    st.session_state.submit_from_preset_button = False
 
 
 def on_config_change():
@@ -508,54 +510,62 @@ if st.session_state.config_applied_successfully:
                     with st.sidebar.expander("Vedi Schema Caricato per Prompt (Debug)", expanded=False): 
                         st.code(st.session_state.table_schema_for_prompt, language='text')
 
-# Area per le domande preimpostate
-st.write("Oppure prova una di queste domande rapide:")
-preset_questions_row1 = [
-    ("Query Clic (7gg)", "Quali sono le mie query con più clic negli ultimi 7 giorni?"),
-    ("Pagine Clic (7gg)", "Quali sono le mie pagine con più clic negli ultimi 7 giorni?"),
-    ("Query Clic (28gg)", "Quali sono le mie query con più clic negli ultimi 28 giorni?"),
-    ("Pagine Clic (28gg)", "Quali sono le mie pagine con più clic negli ultimi 28 giorni?"),
-    ("Perf. Totale (3M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 3 mesi?")
-]
-preset_questions_row2 = [
-    ("Query Impr. (3M)", "Quali sono le mie query con più impressioni negli ultimi 3 mesi?"),
-    ("Pagine Impr. (6M)", "Quali sono le mie pagine con più impressioni negli ultimi 6 mesi?"),
-    ("Perf. Totale (6M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 6 mesi?"),
-    ("Query Clic (12M)", "Quali sono le mie query con più clic negli ultimi 12 mesi?"),
-    ("Perf. Totale (12M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 12 mesi?")
-]
-
-cols_row1 = st.columns(len(preset_questions_row1))
-for i, (label, question_text) in enumerate(preset_questions_row1):
-    if cols_row1[i].button(label, key=f"preset_q_r1_{i}"):
-        st.session_state.user_question_from_button = question_text
-        # Non c'è bisogno di st.form_submit_button qui, il form verrà sottomesso dal rerun implicito
-        # o l'utente premerà il pulsante principale del form.
-        # Per un invio automatico, dovremmo ristrutturare leggermente o usare un callback sul text_area.
-
-cols_row2 = st.columns(len(preset_questions_row2))
-for i, (label, question_text) in enumerate(preset_questions_row2):
-    if cols_row2[i].button(label, key=f"preset_q_r2_{i}"):
-        st.session_state.user_question_from_button = question_text
-
-
+# --- Sezione Form Principale e Pulsanti Preimpostati ---
 with st.form(key='query_form'):
-    # Se una domanda preimpostata è stata cliccata, popola il text_area
     user_question_input = st.text_area(
         "La tua domanda:", 
-        value=st.session_state.get("user_question_from_button", ""), # Usa il valore dal session_state
+        value=st.session_state.get("user_question_from_button", ""),
         height=100, 
-        placeholder="Es. Quante impressioni ho ricevuto la scorsa settimana per le query che contengono 'AI'?"
+        placeholder="Es. Quante impressioni ho ricevuto la scorsa settimana per le query che contengono 'AI'?",
+        key="user_question_text_area" # Aggiunta chiave per poterla modificare programmaticamente
     )
-    submit_button = st.form_submit_button(label="Chiedi a ChatGSC 💬")
+    submit_button_main = st.form_submit_button(label="Chiedi a ChatGSC 💬")
 
-    # Dopo che il form è stato sottomesso (o un bottone preimpostato ha causato un rerun),
-    # pulisci la domanda preimpostata per non ripopolarla al prossimo rerun.
-    if submit_button or st.session_state.user_question_from_button:
-        st.session_state.user_question_from_button = ""
+st.write("Oppure prova una di queste domande rapide (clicca per avviare l'analisi):")
+preset_questions_row1_new = [
+    ("Clic Query (7gg)", "Quali sono le mie query con più clic negli ultimi 7 giorni?"),
+    ("Clic Pagine (7gg)", "Quali sono le mie pagine con più clic negli ultimi 7 giorni?"),
+    ("Clic Query (28gg)", "Quali sono le mie query con più clic negli ultimi 28 giorni?"),
+    ("Clic Pagine (28gg)", "Quali sono le mie pagine con più clic negli ultimi 28 giorni?"),
+    ("Impr. Query (28gg)", "Quali sono le mie query con più impressioni negli ultimi 28 giorni?"),
+    ("Impr. Pagine (28gg)", "Quali sono le mie pagine con più impressioni negli ultimi 28 giorni?")
+]
+preset_questions_row2_new = [
+    ("Perf. Totale (3M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 3 mesi?"),
+    ("Perf. Totale (6M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 6 mesi?"),
+    ("Perf. Totale (12M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 12 mesi?"),
+    ("Query > Pos. 10 (28gg)", "Elenca le query con posizione media peggiore di 10 negli ultimi 28 giorni."),
+    ("Pagine CTR < 1% (28gg)", "Mostra le pagine con CTR inferiore all'1% negli ultimi 28 giorni."),
+    ("Confronto Clic (Mese Prec.)", "Confronta i clic totali di questo mese con quelli del mese precedente.")
+]
 
+cols_r1 = st.columns(len(preset_questions_row1_new))
+for i, (label, question_text) in enumerate(preset_questions_row1_new):
+    if cols_r1[i].button(label, key=f"preset_q_r1_new_{i}"):
+        st.session_state.user_question_from_button = question_text
+        st.session_state.submit_from_preset_button = True
+        st.rerun()
 
-if submit_button and user_question_input: # Usa user_question_input che ora contiene la domanda
+cols_r2 = st.columns(len(preset_questions_row2_new))
+for i, (label, question_text) in enumerate(preset_questions_row2_new):
+    if cols_r2[i].button(label, key=f"preset_q_r2_new_{i}"):
+        st.session_state.user_question_from_button = question_text
+        st.session_state.submit_from_preset_button = True
+        st.rerun()
+
+# Logica di gestione del submit
+# Determina la domanda da processare: o dall'input diretto o da un pulsante preimpostato
+question_to_process = ""
+if st.session_state.get('submit_from_preset_button', False):
+    question_to_process = st.session_state.get("user_question_from_button", "")
+    # Resetta i flag per il prossimo ciclo
+    st.session_state.submit_from_preset_button = False 
+    st.session_state.user_question_from_button = "" # Pulisce dopo averla usata
+elif submit_button_main and user_question_input:
+    question_to_process = user_question_input
+    st.session_state.user_question_from_button = "" # Pulisce se l'utente ha scritto manualmente
+
+if question_to_process:
     if not st.session_state.config_applied_successfully:
         st.error("🤖💬 Per favore, completa e applica la configurazione nella sidebar prima di fare domande.")
     elif not st.session_state.table_schema_for_prompt: 
@@ -567,9 +577,9 @@ if submit_button and user_question_input: # Usa user_question_input che ora cont
         
         llm_model_name_to_use = TARGET_GEMINI_MODEL
 
-        with st.spinner(f"🤖💬 Sto pensando (usando {llm_model_name_to_use}) e generando la query SQL..."):
+        with st.spinner(f"🤖💬 Sto pensando (usando {llm_model_name_to_use}) e generando la query SQL per: \"{question_to_process}\""):
             st.session_state.sql_query = generate_sql_from_question(
-                gcp_project_id, gcp_location, llm_model_name_to_use, user_question_input, 
+                gcp_project_id, gcp_location, llm_model_name_to_use, question_to_process, 
                 st.session_state.table_schema_for_prompt, few_shot_examples 
             )
 
@@ -593,7 +603,7 @@ if submit_button and user_question_input: # Usa user_question_input che ora cont
                 with st.spinner(f"🤖💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
                     st.session_state.results_summary = summarize_results_with_llm(
                         gcp_project_id, gcp_location, llm_model_name_to_use, 
-                        st.session_state.query_results, user_question_input
+                        st.session_state.query_results, question_to_process
                     )
                 
                 if st.session_state.results_summary and st.session_state.results_summary != "Non ci sono dati da riassumere.":
@@ -631,11 +641,10 @@ with right_footer_col:
 
 
 if st.session_state.get('show_privacy_policy', False):
-    # Utilizzo di un container e markdown per la privacy policy invece di st.dialog
     st.subheader("Informativa sulla Privacy per ChatGSC")
     privacy_container = st.container()
-    with privacy_container: # Applica uno scroll se il testo è lungo
-        st.markdown(PRIVACY_POLICY_TEXT, unsafe_allow_html=False) # unsafe_allow_html=False per il markdown standard
+    with privacy_container: 
+        st.markdown(PRIVACY_POLICY_TEXT, unsafe_allow_html=False) 
     if st.button("Chiudi Informativa", key="close_privacy_policy_main_area"):
         st.session_state.show_privacy_policy = False
-        st.rerun()
+        st.rerun() 
