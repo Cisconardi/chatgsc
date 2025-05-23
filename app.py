@@ -17,7 +17,7 @@ st.markdown("""
 <style>
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] p,
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] li {
-        font-size: 3em !important; 
+        font-size: 1.25em !important; /* Puoi aggiustare 1.25em a tuo piacimento */
     }
 </style>
 """, unsafe_allow_html=True)
@@ -396,7 +396,7 @@ if 'show_privacy_policy' not in st.session_state:
     st.session_state.show_privacy_policy = False
 if 'user_question_from_button' not in st.session_state: 
     st.session_state.user_question_from_button = ""
-if 'submit_from_preset_button' not in st.session_state: # Nuovo stato per triggerare submit
+if 'submit_from_preset_button' not in st.session_state: 
     st.session_state.submit_from_preset_button = False
 
 
@@ -523,22 +523,18 @@ with st.form(key='query_form'):
 
 st.write("Oppure prova una di queste domande rapide (clicca per avviare l'analisi):")
 preset_questions_data = [
-    ("Clic Query (7gg)", "Quali sono le mie query con più clic negli ultimi 7 giorni?"),
-    ("Clic Pagine (7gg)", "Quali sono le mie pagine con più clic negli ultimi 7 giorni?"),
-    ("Clic Query (28gg)", "Quali sono le mie query con più clic negli ultimi 28 giorni?"),
-    ("Clic Pagine (28gg)", "Quali sono le mie pagine con più clic negli ultimi 28 giorni?"),
-    ("Impr. Query (28gg)", "Quali sono le mie query con più impressioni negli ultimi 28 giorni?"),
-    ("Impr. Pagine (28gg)", "Quali sono le mie pagine con più impressioni negli ultimi 28 giorni?"),
-    ("Perf. Totale (3M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 3 mesi?"),
+    ("Perf. Totale (7gg)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 7 giorni?"),
+    ("Perf. Totale (28gg)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 28 giorni?"),
     ("Perf. Totale (6M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 6 mesi?"),
     ("Perf. Totale (12M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 12 mesi?"),
-    ("Query > Pos. 10 (28gg)", "Elenca le query con posizione media peggiore di 10 negli ultimi 28 giorni."),
-    ("Pagine CTR < 1% (28gg)", "Mostra le pagine con CTR inferiore all'1% negli ultimi 28 giorni."),
-    ("Confronto Clic (Mese Prec.)", "Confronta i clic totali di questo mese con quelli del mese precedente.")
+    ("Clic MoM (Mese Prec.)", "Confronta i clic totali del mese scorso con quelli di due mesi fa."),
+    ("Clic YoY (Mese Prec.)", "Confronta i clic totali del mese scorso con quelli dello stesso mese dell'anno precedente."),
+    ("Query in Calo (28gg)", "Quali query hanno avuto il maggior calo di clic negli ultimi 28 giorni rispetto ai 28 giorni precedenti?"),
+    ("Pagine Nuove (7gg)", "Quali sono le nuove pagine che hanno ricevuto impressioni negli ultimi 7 giorni ma non ne avevano nei 7 giorni precedenti?")
 ]
 
-# Calcola il numero di pulsanti per riga (massimo 4 per un buon layout)
-buttons_per_row = 4
+# Calcola il numero di pulsanti per riga
+buttons_per_row = 4 
 num_rows = (len(preset_questions_data) + buttons_per_row - 1) // buttons_per_row
 
 for i in range(num_rows):
@@ -552,7 +548,7 @@ for i in range(num_rows):
                 st.session_state.submit_from_preset_button = True
                 st.rerun()
         else:
-            cols[j].empty() # Lascia vuota la colonna se non ci sono più pulsanti
+            cols[j].empty() 
 
 # Logica di gestione del submit
 question_to_process = ""
@@ -568,7 +564,7 @@ if question_to_process:
     if not st.session_state.config_applied_successfully:
         st.error("🤖💬 Per favore, completa e applica la configurazione nella sidebar prima di fare domande.")
     elif not st.session_state.table_schema_for_prompt: 
-        st.error("🤖💬 Lo schema delle tabelle non è disponibile. Verifica la configurazione e i permessi, poi riapplica la configurazione.")
+        st.error("�💬 Lo schema delle tabelle non è disponibile. Verifica la configurazione e i permessi, poi riapplica la configurazione.")
     else:
         st.session_state.sql_query = ""
         st.session_state.query_results = None
