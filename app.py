@@ -638,4 +638,4 @@ if st.session_state.get('show_privacy_policy', False):
         st.markdown(PRIVACY_POLICY_TEXT, unsafe_allow_html=False) # unsafe_allow_html=False per il markdown standard
     if st.button("Chiudi Informativa", key="close_privacy_policy_main_area"):
         st.session_state.show_privacy_policy = False
-        st.rerun() 
+        st.rerun()
