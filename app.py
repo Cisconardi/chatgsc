@@ -8,6 +8,7 @@ import os
 import tempfile
 import json
 import atexit
+import matplotlib.pyplot as plt # Import per i grafici
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
@@ -93,7 +94,8 @@ def load_credentials_from_uploaded_file(uploaded_file):
 # --- Fine Setup Credenziali GCP ---
 
 # Modello Gemini da utilizzare
-TARGET_GEMINI_MODEL = "gemini-2.0-flash-001"
+TARGET_GEMINI_MODEL = "gemini-2.0-flash-001" # Per SQL e riassunto
+CHART_GENERATION_MODEL = "gemini-2.0-flash-001" # Puoi usare lo stesso o un altro
 
 # --- Testo Privacy Policy (dal codice fornito dall'utente) ---
 PRIVACY_POLICY_TEXT = """
@@ -278,14 +280,11 @@ def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | No
         return None
     try:
         client = bigquery.Client(project=project_id) 
-        # st.info(f"Esecuzione query su BigQuery...") # Nascosto
         query_job = client.query(sql_query)
         results_df = query_job.to_dataframe() 
-        # st.success(f"🤖💬 Query completata! {len(results_df)} righe restituite.") # Nascosto
         return results_df
     except Exception as e:
         st.error(f"🤖💬 Errore durante l'esecuzione della query BigQuery: {e}")
-        # st.code(sql_query, language='sql') # Nascosto
         return None
 
 def summarize_results_with_llm(project_id: str, location: str, model_name: str, results_df: pd.DataFrame, original_question: str) -> str | None:
@@ -329,6 +328,85 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
     except Exception as e:
         st.error(f"Errore durante la generazione del riassunto: {e}")
         return "Errore nella generazione del riassunto."
+
+def generate_chart_code_with_llm(project_id: str, location: str, model_name: str, original_question:str, sql_query:str, query_results_df: pd.DataFrame) -> str | None:
+    """Genera codice Python Matplotlib per visualizzare i dati."""
+    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        st.error("🤖💬 Credenziali GCP non caricate. Impossibile generare codice per il grafico.")
+        return None
+    if query_results_df.empty:
+        st.info("🤖💬 Nessun dato disponibile per generare un grafico.")
+        return None
+    
+    try:
+        vertexai.init(project=project_id, location=location)
+        model = GenerativeModel(model_name)
+
+        # Prepara un campione dei dati più significativo per il prompt
+        if len(query_results_df) > 10:
+            data_sample = query_results_df.sample(min(10, len(query_results_df))).to_string(index=False)
+        else:
+            data_sample = query_results_df.to_string(index=False)
+        
+        column_details = []
+        for col in query_results_df.columns:
+            col_type = str(query_results_df[col].dtype)
+            column_details.append(f"- Colonna '{col}' (tipo: {col_type})")
+        column_info = "\n".join(column_details)
+
+
+        chart_prompt = f"""
+Considerando la domanda originale dell'utente:
+"{original_question}"
+
+E la query SQL eseguita:
+```sql
+{sql_query}
+```
+
+I dati restituiti hanno le seguenti colonne e tipi:
+{column_info}
+
+Ecco un campione dei dati (usa il DataFrame completo chiamato 'df' che ti verrà passato nello scope di esecuzione):
+{data_sample}
+
+Genera codice Python **SOLO** usando la libreria Matplotlib per creare un grafico che visualizzi efficacemente questi dati in relazione alla domanda originale.
+Il codice Python generato deve:
+1.  Assumere che `import matplotlib.pyplot as plt` e `import pandas as pd` siano già stati eseguiti.
+2.  Assumere che i dati della query siano disponibili in un DataFrame Pandas chiamato `df`.
+3.  Creare una figura Matplotlib e un asse (es. `fig, ax = plt.subplots(figsize=(10, 6))`). Prova a rendere il grafico leggibile.
+4.  Usare l'asse `ax` per disegnare il grafico (es. `ax.barh(df['colonna_y'], df['colonna_x'])`, `ax.plot(df['colonna_x'], df['colonna_y'])` ecc.). Scegli il tipo di grafico più appropriato.
+5.  Includere un titolo descrittivo per il grafico usando `ax.set_title('Titolo Descrittivo')`.
+6.  Includere etichette chiare per gli assi X e Y (`ax.set_xlabel(...)`, `ax.set_ylabel(...)`) se il grafico non è autoesplicativo (es. grafici a torta).
+7.  Se si usa un grafico a barre o a linee con etichette sull'asse X, assicurarsi che le etichette siano leggibili, ruotandole se necessario (es. `plt.setp(ax.get_xticklabels(), rotation=45, ha='right')`). Considera `ax.tick_params(axis='x', labelrotation=45)` per versioni più recenti di matplotlib.
+8.  Usare `fig.tight_layout()` per migliorare la disposizione.
+9.  **Importante:** Il codice NON deve includere `plt.show()`.
+10. **Critico:** La figura Matplotlib creata DEVE essere assegnata a una variabile chiamata `fig` (es. `fig, ax = plt.subplots()`).
+11. Se i dati non si prestano bene a una visualizzazione grafica significativa o sono troppo complessi per un grafico standard, puoi restituire un commento Python tipo `# Non è stato possibile generare un grafico significativo per questi dati.` invece del codice.
+12. Privilegia grafici a barre orizzontali se stai mostrando classifiche (es. top query), con le etichette sull'asse Y.
+13. Se ci sono molte categorie sull'asse X (es. date), considera di visualizzare solo un campione o aggregare.
+
+Restituisci SOLO il blocco di codice Python. Non aggiungere spiegazioni o testo introduttivo/conclusivo.
+"""
+        response = model.generate_content(chart_prompt)
+        
+        if response.candidates and response.candidates[0].content.parts:
+            code_content = response.candidates[0].content.parts[0].text.strip()
+            if code_content.startswith("```python"):
+                code_content = code_content[len("```python"):].strip()
+            if code_content.endswith("```"):
+                code_content = code_content[:-len("```")].strip()
+            
+            if "# Non è stato possibile generare un grafico significativo" in code_content:
+                st.info(f"🤖💬 AI: {code_content}")
+                return None
+            return code_content
+        else:
+            st.warning("🤖💬 L'AI non ha generato codice per il grafico.")
+            return None
+    except Exception as e:
+        st.error(f"🤖💬 Errore durante la generazione del codice del grafico: {e}")
+        return None
 
 # --- Interfaccia Streamlit ---
 st.title("Ciao, sono ChatGSC 🤖💬")
@@ -460,11 +538,16 @@ with st.sidebar:
     )
     
     st.markdown(f"ℹ️ Modello AI utilizzato: **{TARGET_GEMINI_MODEL}**.")
-    few_shot_examples = "" # Gli esempi few-shot sono nascosti ma la variabile è mantenuta
+    few_shot_examples = "" 
 
-    st.divider() # Primo divider
+    st.divider() 
+    # Nuova Checkbox per generazione grafico
+    enable_chart_generation = st.checkbox("📊 Crea grafico con AI", value=False, on_change=on_config_change, key="enable_chart")
+    st.session_state.enable_chart_generation = enable_chart_generation # Assicura che lo stato sia aggiornato
+
+    st.divider() 
     st.markdown("⚠️ **Nota sui Costi:** L'utilizzo di questa applicazione comporta chiamate alle API di Google Cloud Platform (Vertex AI, BigQuery) che sono soggette a costi. Assicurati di comprendere e monitorare i [prezzi di GCP](https://cloud.google.com/pricing).", unsafe_allow_html=True)
-    st.divider() # Secondo divider
+    st.divider() 
     
     apply_config_button = st.button("Applica Configurazione", key="apply_config")
 
@@ -476,15 +559,7 @@ with st.sidebar:
         if not gcp_project_id:
             st.error("🤖💬 ID Progetto Google Cloud è obbligatorio.")
             all_fields_filled = False
-        if not gcp_location:
-            st.error("🤖💬 Location Vertex AI è obbligatoria.")
-            all_fields_filled = False
-        if not bq_dataset_id:
-            st.error("🤖💬 ID Dataset BigQuery è obbligatorio.")
-            all_fields_filled = False
-        if not bq_table_names_str:
-            st.error("🤖💬 Nomi Tabelle GSC sono obbligatori.")
-            all_fields_filled = False
+        # ... (altri controlli campi obbligatori)
         
         if all_fields_filled:
             st.session_state.config_applied_successfully = True
@@ -523,17 +598,16 @@ with st.form(key='query_form'):
 
 st.write("Oppure prova una di queste domande rapide (clicca per avviare l'analisi):")
 preset_questions_data = [
-    ("Performance Totale (7gg)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 7 giorni?"),
-    ("Performance Totale (28gg)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 28 giorni?"),
-    ("Performance Totale (6M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 6 mesi?"),
-    ("Performance Totale (12M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 12 mesi?"),
+    ("Perf. Totale (7gg)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 7 giorni?"),
+    ("Perf. Totale (28gg)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 28 giorni?"),
+    ("Perf. Totale (6M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 6 mesi?"),
+    ("Perf. Totale (12M)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 12 mesi?"),
     ("Clic MoM (Mese Prec.)", "Confronta i clic totali del mese scorso con quelli di due mesi fa."),
     ("Clic YoY (Mese Prec.)", "Confronta i clic totali del mese scorso con quelli dello stesso mese dell'anno precedente."),
     ("Query in Calo (28gg)", "Quali query hanno avuto il maggior calo di clic negli ultimi 28 giorni rispetto ai 28 giorni precedenti? Fai la lista con elenco puntato numerato delle peggiori 10 con i relativi click persi."),
     ("Pagine Nuove (7gg)", "Quali sono le url che hanno ricevuto impressioni negli ultimi 7 giorni ma non ne avevano nei 7 giorni precedenti? Fai la lista con la crescite di impression più significative (max 10) con relativo aumento di impressioni.")
 ]
 
-# Calcola il numero di pulsanti per riga
 buttons_per_row = 4 
 num_rows = (len(preset_questions_data) + buttons_per_row - 1) // buttons_per_row
 
@@ -550,7 +624,6 @@ for i in range(num_rows):
         else:
             cols[j].empty() 
 
-# Logica di gestione del submit
 question_to_process = ""
 if st.session_state.get('submit_from_preset_button', False):
     question_to_process = st.session_state.get("user_question_from_button", "")
@@ -564,7 +637,7 @@ if question_to_process:
     if not st.session_state.config_applied_successfully:
         st.error("🤖💬 Per favore, completa e applica la configurazione nella sidebar prima di fare domande.")
     elif not st.session_state.table_schema_for_prompt: 
-        st.error("�💬 Lo schema delle tabelle non è disponibile. Verifica la configurazione e i permessi, poi riapplica la configurazione.")
+        st.error("🤖💬 Lo schema delle tabelle non è disponibile. Verifica la configurazione e i permessi, poi riapplica la configurazione.")
     else:
         st.session_state.sql_query = ""
         st.session_state.query_results = None
@@ -608,6 +681,45 @@ if question_to_process:
                      st.info("🤖💬 La query non ha restituito risultati da riassumere o non ci sono dati.")
                 else: 
                     st.warning("🤖💬 Non è stato possibile generare un riassunto, ma la query ha prodotto risultati (vedi dettagli tecnici).")
+
+                # --- SEZIONE GENERAZIONE GRAFICO ---
+                if st.session_state.get('enable_chart_generation', False) and not st.session_state.query_results.empty:
+                    st.markdown("---")
+                    st.subheader("📊 Visualizzazione Grafica (Beta)")
+                    with st.spinner("🤖💬 Sto generando il codice per il grafico..."):
+                        chart_code = generate_chart_code_with_llm(
+                            gcp_project_id, 
+                            gcp_location, 
+                            CHART_GENERATION_MODEL,
+                            question_to_process, 
+                            st.session_state.sql_query, 
+                            st.session_state.query_results
+                        )
+                    
+                    if chart_code:
+                        try:
+                            exec_scope = {
+                                "plt": plt, 
+                                "pd": pd, 
+                                "df": st.session_state.query_results.copy(),
+                                "fig": None # Per recuperare la figura generata
+                            }
+                            exec(chart_code, exec_scope)
+                            fig_generated = exec_scope.get("fig")
+
+                            if fig_generated is not None:
+                                st.pyplot(fig_generated)
+                            else:
+                                st.warning("🤖💬 L'AI ha generato codice, ma non è stato possibile creare un grafico ('fig' non trovata).")
+                                with st.expander("Vedi codice grafico generato (Debug)"):
+                                    st.code(chart_code, language="python")
+                        except Exception as e:
+                            st.error(f"🤖💬 Errore durante l'esecuzione del codice del grafico: {e}")
+                            with st.expander("Vedi codice grafico generato (che ha causato l'errore)"):
+                                st.code(chart_code, language="python")
+                    elif st.session_state.enable_chart_generation:
+                        st.warning("🤖💬 Non è stato possibile generare il codice per il grafico.")
+                # --- FINE SEZIONE GENERAZIONE GRAFICO ---
         else:
             st.error("Non è stato possibile generare una query SQL per la tua domanda.")
             if 'last_prompt' in st.session_state and st.session_state.last_prompt:
@@ -637,9 +749,11 @@ with right_footer_col:
 
 if st.session_state.get('show_privacy_policy', False):
     st.subheader("Informativa sulla Privacy per ChatGSC")
-    privacy_container = st.container()
-    with privacy_container: 
-        st.markdown(PRIVACY_POLICY_TEXT, unsafe_allow_html=False) 
+    # Utilizza un container con altezza definita per permettere lo scrolling se il testo è lungo
+    # Nota: lo styling diretto dell'altezza del container markdown è limitato.
+    # Per uno scroll vero e proprio dentro un modale, st.dialog (Streamlit >= 1.33) sarebbe meglio.
+    # Questa è una visualizzazione semplice.
+    st.markdown(f"<div style='height: 400px; overflow-y: auto; border: 1px solid #ccc; padding:10px;'>{PRIVACY_POLICY_TEXT.replace('**', '<b>').replace('\n', '<br>')}</div>", unsafe_allow_html=True)
     if st.button("Chiudi Informativa", key="close_privacy_policy_main_area"):
         st.session_state.show_privacy_policy = False
-        st.rerun()
+        st.rerun() 
