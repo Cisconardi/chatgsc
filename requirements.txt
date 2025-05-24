@@ -5,3 +5,4 @@ google-cloud-bigquery-storage
 pandas>=1.0.0
 google-auth>=2.0.0 # Spesso una dipendenza implicita, ma meglio esplicitarla
 db-dtypes # Aggiunto per risolvere l'errore to_dataframe()
+matplotlib
