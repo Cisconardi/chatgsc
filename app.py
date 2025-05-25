@@ -9,8 +9,8 @@ import os
 import json
 # import atexit # Non più necessario per _cleanup_temp_creds_file
 import matplotlib.pyplot as plt 
-from google.oauth2.credentials import Credentials # Ancora utile per tipizzare
-import google.auth # Fondamentale per st.login()
+from google.oauth2.credentials import Credentials 
+import google.auth 
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
@@ -40,7 +40,7 @@ Benvenuto in ChatGSC! La tua privacy è importante per noi. Questa Informativa s
 **1. Informazioni che Raccogliamo**
 
 * **Informazioni sull'Account Google:** Quando ti autentichi utilizzando "Accedi con Google", Streamlit (e di conseguenza la nostra applicazione) riceve informazioni di base dal tuo profilo Google per identificarti come utente autorizzato. Questo di solito include il tuo indirizzo email e il tuo nome. Non memorizziamo la tua password di Google. L'autenticazione e la gestione dei token sono gestite da Streamlit e Google.
-* **Autorizzazione all'accesso ai dati:** Affinché l'app possa accedere ai tuoi dati Google Cloud (BigQuery, Vertex AI) per tuo conto, dovrai concedere espliciti permessi (ambiti/scopes) durante il flusso di consenso OAuth.
+* **Autorizzazione all'accesso ai dati:** Affinché l'app possa accedere ai tuoi dati Google Cloud (BigQuery, Vertex AI) per tuo conto, dovrai concedere espliciti permessi (ambiti/scopes) durante il flusso di consenso OAuth. Gli ambiti richiesti da questa applicazione includono l'accesso per visualizzare il tuo indirizzo email, le informazioni del profilo, e per interagire con i servizi Google Cloud Platform (inclusi BigQuery per la lettura dei dati e Vertex AI per l'elaborazione del linguaggio).
 * **Dati di Google Search Console:** Con la tua autorizzazione tramite il consenso OAuth 2.0, l'applicazione accederà ai dati del tuo Google Search Console archiviati nel tuo progetto Google BigQuery. Questi dati includono metriche di performance del sito web come query di ricerca, clic, impressioni, CTR, posizione media, URL delle pagine, ecc. L'applicazione legge questi dati solo per rispondere alle tue domande.
 * **Interazioni con l'AI:** Le domande che poni all'AI e le risposte generate vengono processate tramite i servizi di Google Cloud Vertex AI, utilizzando le credenziali ottenute tramite il tuo consenso OAuth.
 
@@ -96,18 +96,20 @@ def get_gcp_credentials_object():
             # google.auth.default() dovrebbe raccogliere le credenziali dell'utente loggato
             # se gli scope corretti sono stati richiesti e concessi durante il login.
             credentials, project_id_from_creds = google.auth.default(
-                scopes=[ # Assicurati che questi scope siano richiesti anche in st.login_button
+                scopes=[ 
                     "openid", 
                     "https://www.googleapis.com/auth/userinfo.email",
                     "https://www.googleapis.com/auth/userinfo.profile",
-                    "https://www.googleapis.com/auth/cloud-platform", # Ambito ampio per Vertex AI e altri servizi
-                    "https://www.googleapis.com/auth/bigquery.readonly"  # Specifico per BigQuery
+                    "https://www.googleapis.com/auth/cloud-platform",
+                    "https://www.googleapis.com/auth/bigquery.readonly"
                 ]
             )
             # Il project_id restituito da google.auth.default() potrebbe essere quello di default dell'ambiente
             # o quello associato alle credenziali utente se configurato.
             # Per questa app, l'utente DEVE specificare il project_id su cui operare.
-            if project_id_from_creds and not st.session_state.get('gcp_project_id_input'): # Precompila solo se vuoto
+            # Non precompiliamo gcp_project_id_input da qui per evitare confusione,
+            # ma potremmo usarlo come fallback se l'utente non inserisce nulla.
+            if project_id_from_creds and not st.session_state.get('gcp_project_id_input'):
                  st.session_state.gcp_project_id_input = project_id_from_creds
                  print(f"DEBUG: Project ID from google.auth.default(): {project_id_from_creds}")
             return credentials
@@ -356,55 +358,42 @@ with st.expander(expander_title_text, expanded=False):
     st.write("- Configura l'esportazione dei dati di Google Search Console verso un dataset BigQuery nel tuo progetto Google Cloud.")
     st.write("- [Guida ufficiale Google per l'esportazione GSC a BigQuery](https://support.google.com/webmasters/answer/12918484).")
     st.write("---")
-    st.subheader("2. Creazione Account di Servizio GCP e Download Chiave JSON (Metodo 1):")
-    st.write('- Nel tuo progetto Google Cloud, vai su "IAM e amministrazione" > "Account di servizio".')
-    st.write("- Crea un nuovo account di servizio (es. `gsc-chatbot-sa`).")
-    st.write("- Assegna i seguenti ruoli minimi a questo account di servizio sul progetto:")
-    st.write("  - `Vertex AI User` (per accedere ai modelli Gemini)")
-    st.write("  - `BigQuery Data Viewer` (per leggere dati e metadati delle tabelle)")
-    st.write("  - `BigQuery Job User` (per eseguire query)")
-    st.write("- Crea una chiave JSON per questo account di servizio e **scaricala sul tuo computer.** Questo file verrà caricato nell'app.")
-    st.write("---")
-    st.subheader("3. Configurazione OAuth 2.0 (Metodo 2 - \"Accedi con Google\"):")
-    st.write("- Se preferisci usare OAuth 2.0 (l'utente si autentica con il proprio account Google):")
-    st.write('  - In GCP > "API e servizi" > "Credenziali", crea un "ID client OAuth".')
+    st.subheader("2. Configurazione OAuth 2.0 (\"Accedi con Google\"):")
+    st.write("- In GCP > \"API e servizi\" > \"Credenziali\", crea un \"ID client OAuth\".")
     st.write('  - Tipo applicazione: "Applicazione web".')
     st.write("  - Aggiungi l'URI di reindirizzamento corretto per la tua app Streamlit. Per questa app deployata su Streamlit Cloud, l'URI è `https://chatgsc.streamlit.app/oauth2callback`. Per lo sviluppo locale, è `http://localhost:8501/oauth2callback` (o la porta che usi).")
     st.write("  - Prendi nota dell'ID Client e del Client Secret. Dovrai aggiungerli come secrets di Streamlit (vedi file `.streamlit/secrets.toml` di esempio).")
     st.write('  - Configura la "Schermata consenso OAuth" con gli ambiti necessari (almeno `openid`, `https://www.googleapis.com/auth/userinfo.email`, `https://www.googleapis.com/auth/userinfo.profile`, `https://www.googleapis.com/auth/cloud-platform`, `https://www.googleapis.com/auth/bigquery.readonly`).')
     st.write("---")
-    st.subheader("4. Abilitazione API Necessarie:")
+    st.subheader("3. Abilitazione API Necessarie:")
     st.write("- Nel tuo progetto Google Cloud, assicurati che le seguenti API siano abilitate:")
     st.write("  - `Vertex AI API`")
     st.write("  - `BigQuery API`")
     st.write("  - `Identity and Access Management (IAM) API` (generalmente abilitata di default)")
     st.write("  - `Google Identity Toolkit API` o `Identity Platform` (per il flusso OAuth 2.0 gestito da `st.login`)")
     st.write("---")
-    st.subheader("5. Configurazione Parametri App (Sidebar):")
-    st.write("- Scegli il metodo di autenticazione nella sidebar.")
-    st.write("- Se usi il file JSON, caricalo.")
-    st.write("- Inserisci l'**ID del tuo Progetto Google Cloud** (quello contenente i dati BigQuery e dove usare Vertex AI). Se hai caricato un file di credenziali JSON, questo campo potrebbe essere precompilato.")
+    st.subheader("4. Configurazione Parametri App (Sidebar):")
+    st.write("- Effettua l'accesso con Google tramite il pulsante nella sidebar.")
+    st.write("- Inserisci l'**ID del tuo Progetto Google Cloud** (quello contenente i dati BigQuery e dove usare Vertex AI).")
     st.write(f"- Specifica la **Location Vertex AI** (es. `europe-west1`, `us-central1`). Assicurati che il modello `{TARGET_GEMINI_MODEL}` sia disponibile in questa regione per il tuo progetto.")
     st.write("- Inserisci l'**ID del Dataset BigQuery** dove hai esportato i dati GSC.")
     st.write("- Fornisci i **Nomi delle Tabelle GSC** (separate da virgola) che vuoi interrogare (es. `searchdata_url_impression`, `searchdata_site_impression`).")
     st.write("---")
-    st.subheader("6. Applica Configurazione (nella Sidebar):")
-    st.write("- Dopo aver completato la configurazione per il metodo di autenticazione scelto e inserito tutti i parametri, premi il pulsante **'Applica Configurazione'** nella sidebar per attivare l'applicazione.")
+    st.subheader("5. Applica Configurazione (nella Sidebar):")
+    st.write("- Dopo aver effettuato l'accesso e inserito tutti i parametri, premi il pulsante **'Applica Configurazione'** nella sidebar per attivare l'applicazione.")
     st.write("---")
     st.write("Una volta configurato tutto, potrai fare domande sui tuoi dati!")
 
 # Inizializza st.session_state
 def initialize_session_state():
     default_session_state = {
-        'uploaded_project_id': None, 'sql_query': "", 'query_results': None,
+        'sql_query': "", 'query_results': None,
         'results_summary': "", 'table_schema_for_prompt': "", 'last_prompt': "",
-        'current_schema_config_key': "", 'credentials_successfully_loaded_by_app': False,
-        'last_uploaded_file_id_processed_successfully': None, 
+        'current_schema_config_key': "", 
         'config_applied_successfully': False, 'show_privacy_policy': False,
         'user_question_from_button': "", 'submit_from_preset_button': False,
-        'auth_method': "Carica File JSON Account di Servizio", 
-        'user': None, # st.login() popola st.session_state.user
-        'gcp_project_id_input': "example-project-id",
+        'user': None, # Per st.login()
+        'gcp_project_id_input': "", # Inizia vuoto per OAuth, l'utente deve inserirlo
         'enable_chart_generation': False
     }
     for key, value in default_session_state.items():
@@ -419,107 +408,49 @@ def on_config_change():
     st.session_state.current_schema_config_key = "" 
     print("DEBUG: Configurazione cambiata, config_applied_successfully resettato.")
 
-def on_auth_method_change():
-    reset_all_auth_states() 
-    on_config_change() 
-
-
 # --- Sidebar ---
 with st.sidebar:
     st.header("⚙️ Configurazione")
-
-    auth_method_options = ["Carica File JSON Account di Servizio"]
+    
+    st.subheader("1. Autenticazione Google (OAuth 2.0)")
     # Verifica se i secrets per st.login("google") sono configurati
     google_client_id_from_secrets = st.secrets.get("auth.google.client_id")
     google_client_secret_from_secrets = st.secrets.get("auth.google.client_secret")
-    
-    if google_client_id_from_secrets and google_client_secret_from_secrets:
-        auth_method_options.append("Accedi con Google (OAuth 2.0)")
 
-    if len(auth_method_options) == 1 or st.session_state.auth_method not in auth_method_options:
-        st.session_state.auth_method = auth_method_options[0]
-    
-    if len(auth_method_options) > 1:
-        st.session_state.auth_method = st.radio(
-            "Scegli il metodo di autenticazione:",
-            auth_method_options,
-            key="auth_method_radio",
-            on_change=on_auth_method_change,
-            index=auth_method_options.index(st.session_state.auth_method)
-        )
+    if not (google_client_id_from_secrets and google_client_secret_from_secrets):
+        st.error("🤖💬 Client ID o Client Secret per Google OAuth non configurati nei secrets dell'app. L'autenticazione non funzionerà.")
     else:
-        st.info(f"Metodo di autenticazione: {st.session_state.auth_method}")
-    
-    st.divider()
-
-    if st.session_state.auth_method == "Carica File JSON Account di Servizio":
-        st.subheader("1a. Carica File Credenziali Account di Servizio")
-        uploaded_credential_file = st.file_uploader(
-            "Seleziona il file JSON della chiave del tuo account di servizio GCP", 
-            type="json", 
-            key="credential_uploader_sa",
-            on_change=on_config_change 
-        )
-        if uploaded_credential_file is not None:
-            current_file_unique_id = uploaded_credential_file.file_id
-            if st.session_state.last_uploaded_file_id_processed_successfully != current_file_unique_id or \
-               not st.session_state.credentials_successfully_loaded_by_app:
-                if load_credentials_from_service_account_file(uploaded_credential_file):
-                    st.session_state.gcp_project_id_input = st.session_state.uploaded_project_id or "example-project-id"
-                    st.rerun() 
-        elif uploaded_credential_file is None and st.session_state.credentials_successfully_loaded_by_app: 
-            reset_all_auth_states() 
-            st.rerun()
-        
-        if st.session_state.credentials_successfully_loaded_by_app:
-            st.success("🤖💬 Credenziali da file JSON caricate.")
-        else:
-            st.warning("🤖💬 Carica file credenziali JSON.")
-
-    elif st.session_state.auth_method == "Accedi con Google (OAuth 2.0)":
-        st.subheader("1b. Autenticazione Google (OAuth 2.0)")
-        
-        if not (google_client_id_from_secrets and google_client_secret_from_secrets):
-            st.error("🤖💬 Client ID o Client Secret per Google OAuth non configurati nei secrets dell'app.")
-        else:
-            # Ambiti necessari oltre a quelli di default (openid, email, profile)
-            # Questi devono essere abilitati nella schermata di consenso OAuth in GCP
-            additional_scopes = [
-                "https://www.googleapis.com/auth/cloud-platform", 
-                "https://www.googleapis.com/auth/bigquery.readonly"
-            ]
-            if not st.session_state.get("user"): # Se l'utente non è loggato
-                # Il redirect_uri è gestito automaticamente da st.login
-                # Assicurati che https://<your-app-name>.streamlit.app/oauth2callback sia negli URI autorizzati in GCP
-                # e http://localhost:8501/oauth2callback per lo sviluppo locale.
-                st.login_button(provider="google", scopes=additional_scopes, key="google_login_button")
-                st.info("🤖💬 Clicca il pulsante sopra per accedere con Google.")
-            else: # Se l'utente è loggato
-                user_info = st.session_state.user
-                user_email = user_info.get("email", "Email non disponibile")
-                st.success(f"🤖💬 Autenticato come: {user_email}")
-                st.session_state.credentials_successfully_loaded_by_app = True 
-                st.session_state.user_email = user_email 
-
-                if st.button("Logout da Google", key="google_logout_button"):
-                    st.logout() 
-                    # reset_all_auth_states() # st.logout() dovrebbe già resettare 'user' e triggerare un rerun
-                    # on_config_change() # Chiamato da st.logout() implicito rerun
-                    # st.rerun() # st.logout() fa già un rerun
+        # Ambiti necessari oltre a quelli di default (openid, email, profile)
+        additional_scopes = [
+            "https://www.googleapis.com/auth/cloud-platform", 
+            "https://www.googleapis.com/auth/bigquery.readonly"
+        ]
+        if not st.session_state.get("user"): 
+            st.login_button(
+                label="Accedi con Google", 
+                provider="google", 
+                scopes=additional_scopes, 
+                key="google_login_button_main",
+                on_submit=on_config_change # Resetta config se l'utente accede/esce
+            )
+            st.info("🤖💬 Clicca il pulsante sopra per accedere con Google.")
+        else: 
+            user_info = st.session_state.user
+            user_email = user_info.get("email", "Email non disponibile")
+            st.success(f"🤖💬 Autenticato come: {user_email}")
+            
+            if st.button("Logout da Google", key="google_logout_button_main"):
+                st.logout()
+                # on_config_change() # st.logout() dovrebbe triggerare un rerun che resetta lo stato
+                # reset_all_auth_states() # st.logout() dovrebbe già resettare 'user'
 
     st.divider()
     st.subheader("2. Parametri Query")
     
-    current_project_id_value = "example-project-id" 
-    if st.session_state.auth_method == "Carica File JSON Account di Servizio":
-        current_project_id_value = st.session_state.get('uploaded_project_id', "example-project-id")
-    elif st.session_state.auth_method == "Accedi con Google (OAuth 2.0)":
-        # Per OAuth, l'utente DEVE specificare il progetto su cui operare.
-        current_project_id_value = st.session_state.get('gcp_project_id_input', "")
-
+    # L'utente DEVE inserire il project ID quando usa OAuth
     gcp_project_id = st.text_input("ID Progetto Google Cloud da usare", 
-                                   value=current_project_id_value, 
-                                   help="ID progetto GCP. Con JSON SA, precompilato. Con OAuth, inseriscilo.",
+                                   value=st.session_state.get('gcp_project_id_input', ""), 
+                                   help="ID progetto GCP su cui operare.",
                                    on_change=on_config_change,
                                    key="gcp_project_id_input_field")
     st.session_state.gcp_project_id_input = gcp_project_id 
@@ -554,11 +485,10 @@ with st.sidebar:
 
     if apply_config_button:
         all_fields_filled = True
-        auth_successful = (st.session_state.auth_method == "Carica File JSON Account di Servizio" and st.session_state.credentials_successfully_loaded_by_app) or \
-                          (st.session_state.auth_method == "Accedi con Google (OAuth 2.0)" and st.session_state.get('user') is not None)
+        auth_successful = st.session_state.get('user') is not None
         
         if not auth_successful:
-            st.error("🤖💬 Per favore, completa l'autenticazione (JSON o Accedi con Google).")
+            st.error("🤖💬 Per favore, completa l'accesso con Google.")
             all_fields_filled = False
         if not gcp_project_id:
             st.error("🤖💬 ID Progetto Google Cloud è obbligatorio.")
@@ -579,11 +509,8 @@ with st.sidebar:
         st.info("Configurazione attiva. Modifica i campi e riapplica se necessario.")
 
 
-# Logica per caricare lo schema solo se la configurazione è stata applicata
-creds_available_for_schema = (st.session_state.auth_method == "Carica File JSON Account di Servizio" and os.getenv("GOOGLE_APPLICATION_CREDENTIALS")) or \
-                             (st.session_state.auth_method == "Accedi con Google (OAuth 2.0)" and st.session_state.get('user') is not None)
-
-if st.session_state.config_applied_successfully and creds_available_for_schema:
+# Logica per caricare lo schema solo se la configurazione è stata applicata e l'utente è loggato
+if st.session_state.config_applied_successfully and st.session_state.get('user') is not None:
     current_gcp_project_id = st.session_state.get('gcp_project_id_input', gcp_project_id) 
     current_bq_dataset_id = bq_dataset_id 
     current_bq_table_names_str = bq_table_names_str 
@@ -768,15 +695,12 @@ with right_footer_col:
 
 if st.session_state.get('show_privacy_policy', False):
     st.subheader("Informativa sulla Privacy per ChatGSC")
-    privacy_container = st.container() # Usiamo un container per la policy
-    # Applica uno stile per l'altezza e lo scroll direttamente al container se possibile,
-    # o al markdown se il container non lo supporta direttamente per lo scroll.
-    # Per semplicità, applichiamo al markdown con HTML.
-    privacy_html = PRIVACY_POLICY_TEXT.replace('**', '<b>').replace('**', '</b>').replace('\n', '<br>')
-    # Rimuovi l'ultimo <br> se presente per evitare spazio extra alla fine
-    if privacy_html.endswith('<br>'):
-        privacy_html = privacy_html[:-4]
-    st.markdown(f"<div style='height: 400px; overflow-y: auto; border: 1px solid #ccc; padding:10px;'>{privacy_html}</div>", unsafe_allow_html=True)
+    privacy_container = st.container()
+    with privacy_container: 
+        privacy_html = PRIVACY_POLICY_TEXT.replace('**', '<b>').replace('\n', '<br>')
+        if privacy_html.endswith('<br>'):
+            privacy_html = privacy_html[:-4]
+        st.markdown(f"<div style='height: 400px; overflow-y: auto; border: 1px solid #ccc; padding:10px;'>{privacy_html}</div>", unsafe_allow_html=True)
     if st.button("Chiudi Informativa", key="close_privacy_policy_main_area"):
         st.session_state.show_privacy_policy = False
-        st.rerun() # Ricarica per nascondere la policy
+        st.rerun() 
