@@ -56,8 +56,8 @@ def reset_all_auth_states():
         'credentials_successfully_loaded_by_app', 'uploaded_project_id', 
         'last_uploaded_file_id_processed_successfully', 'config_applied_successfully',
         'table_schema_for_prompt', 'current_schema_config_key', 
-        'oauth_token', # Modificato da 'user_oauth_credentials'
-        'user_info', # Per info utente da streamlit-oauth
+        'oauth_token', 
+        'user_info', 
         'auth_method' 
     ]
     for key in keys_to_reset:
@@ -84,7 +84,7 @@ def load_credentials_from_service_account_file(uploaded_file):
                 _temp_gcp_creds_file_path = temp_json_file.name
             
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _temp_gcp_creds_file_path
-            st.session_state.credentials_successfully_loaded_by_app = True # Flag generico per credenziali caricate
+            st.session_state.credentials_successfully_loaded_by_app = True 
             st.session_state.last_uploaded_file_id_processed_successfully = uploaded_file.file_id
             return True
         except json.JSONDecodeError as json_err:
@@ -178,15 +178,13 @@ def get_gcp_credentials_object():
         token_info = st.session_state.oauth_token
         if token_info and 'access_token' in token_info:
             try:
-                # streamlit-oauth fornisce un token che può essere usato direttamente o per creare un oggetto Credentials
-                # Per google-cloud-python, è meglio creare un oggetto Credentials completo
                 return Credentials(
                     token=token_info['access_token'],
-                    refresh_token=token_info.get('refresh_token'), # Potrebbe non essere sempre presente
-                    token_uri="https://oauth2.googleapis.com/token", # Standard Google token URI
-                    client_id=st.secrets.get("OAUTH_CLIENT_ID"),    # Dai secrets
-                    client_secret=st.secrets.get("OAUTH_CLIENT_SECRET"), # Dai secrets
-                    scopes=token_info.get('scope', '').split(' ') # Scope dovrebbe essere una lista
+                    refresh_token=token_info.get('refresh_token'), 
+                    token_uri="https://oauth2.googleapis.com/token", 
+                    client_id=st.secrets.get("OAUTH_CLIENT_ID"),    
+                    client_secret=st.secrets.get("OAUTH_CLIENT_SECRET"), 
+                    scopes=token_info.get('scope', '').split(' ') 
                 )
             except Exception as e:
                 print(f"DEBUG: Errore nella creazione dell'oggetto Credentials da OAuth token: {e}")
@@ -481,8 +479,8 @@ def initialize_session_state():
         'config_applied_successfully': False, 'show_privacy_policy': False,
         'user_question_from_button': "", 'submit_from_preset_button': False,
         'auth_method': "Carica File JSON Account di Servizio", # Default al metodo JSON
-        'oauth_token': None, # Modificato da user_oauth_credentials
-        'user_info': None, # Per info utente da streamlit-oauth
+        'oauth_token': None, 
+        'user_info': None, 
         'gcp_project_id_input': "example-project-id",
         'enable_chart_generation': False
     }
@@ -545,7 +543,7 @@ with st.sidebar:
                 if load_credentials_from_service_account_file(uploaded_credential_file):
                     st.session_state.gcp_project_id_input = st.session_state.uploaded_project_id or "example-project-id"
                     st.rerun() 
-        elif uploaded_credential_file is None and st.session_state.credentials_successfully_loaded_by_app: # Se il file viene rimosso
+        elif uploaded_credential_file is None and st.session_state.credentials_successfully_loaded_by_app: 
             reset_all_auth_states() 
             st.rerun()
         
@@ -559,24 +557,20 @@ with st.sidebar:
         
         AUTHORIZE_ENDPOINT = "[https://accounts.google.com/o/oauth2/v2/auth](https://accounts.google.com/o/oauth2/v2/auth)"
         TOKEN_ENDPOINT = "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)"
-        REVOKE_ENDPOINT = "[https://oauth2.googleapis.com/revoke](https://oauth2.googleapis.com/revoke)" # Non usato attivamente ma utile per completezza
+        REVOKE_ENDPOINT = "[https://oauth2.googleapis.com/revoke](https://oauth2.googleapis.com/revoke)"
         
-        # Determina REDIRECT_URI
-        # Questo è un tentativo; potrebbe necessitare di aggiustamenti specifici per l'ambiente di deploy.
         try:
             from streamlit.web.server.server import Server
-            # Questo è un accesso a un attributo interno e potrebbe cambiare.
             session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
             if session_info and hasattr(session_info, 'ws_base_url'):
                 http_protocol = "https" if session_info.ws_base_url.startswith("wss:") else "http"
                 host_port_path = session_info.ws_base_url.split("://")[1].split("/stream")[0]
                 REDIRECT_URI = f"{http_protocol}://{host_port_path}/"
             else: 
-                REDIRECT_URI = "http://localhost:8501/" # Fallback per locale
+                REDIRECT_URI = "http://localhost:8501/" 
         except Exception:
-             REDIRECT_URI = "http://localhost:8501/" # Fallback robusto
+             REDIRECT_URI = "http://localhost:8501/" 
         # st.caption(f"DEBUG: OAuth Redirect URI: {REDIRECT_URI}")
-
 
         SCOPES = [
             "openid", "[https://www.googleapis.com/auth/userinfo.email](https://www.googleapis.com/auth/userinfo.email)",
@@ -588,37 +582,35 @@ with st.sidebar:
         if not OAUTH_CLIENT_ID or not OAUTH_CLIENT_SECRET:
              st.error("🤖💬 Client ID o Client Secret OAuth non configurati nei secrets dell'app.")
         else:
-            # Crea il componente OAuth
-            oauth_button = oauth.OAuth2Component(
+            oauth_component = oauth.OAuth2Component( # Rimosso button_label e button_args
                 client_id=OAUTH_CLIENT_ID,
                 client_secret=OAUTH_CLIENT_SECRET,
                 authorize_endpoint=AUTHORIZE_ENDPOINT,
                 token_endpoint=TOKEN_ENDPOINT,
-                refresh_token_endpoint=TOKEN_ENDPOINT, # Google usa lo stesso endpoint per il refresh
+                refresh_token_endpoint=TOKEN_ENDPOINT, 
                 revoke_token_endpoint=REVOKE_ENDPOINT,
-                button_label="Accedi con Google",
-                button_args={"use_container_width": True, "type": "primary"},
-                scopes=SCOPES,
-                redirect_uri=REDIRECT_URI, # Aggiunto redirect_uri
-                pkce="S256" # Abilita PKCE per maggiore sicurezza
+                # I parametri del bottone vanno nel metodo authorize_button
             )
 
             if 'oauth_token' not in st.session_state or st.session_state.oauth_token is None:
-                result = oauth_button.authorize_button(
-                    name="Accedi con Google",
-                    icon="[https://www.google.com/favicon.ico](https://www.google.com/favicon.ico)", # O un'altra icona
-                    # redirect_uri=REDIRECT_URI, # Specificato sopra
-                    # scope=" ".join(SCOPES), # Specificato sopra
-                    # pkce=True, # Specificato sopra
+                # Usa il componente per creare il bottone di autorizzazione
+                result = oauth_component.authorize_button(
+                    name="Accedi con Google", # Questo è il testo del bottone
+                    icon="[https://www.google.com/favicon.ico](https://www.google.com/favicon.ico)",
+                    redirect_uri=REDIRECT_URI,
+                    scope=" ".join(SCOPES), # La libreria si aspetta una stringa separata da spazi
+                    pkce="S256",
+                    use_container_width=True,
+                    type="primary"
                 )
+                
                 if result and "token" in result:
                     st.session_state.oauth_token = result["token"]
-                    # Tenta di ottenere info utente (opzionale)
                     try:
                         user_info_response = oauth.get_user_info(result["token"], "https://www.googleapis.com/oauth2/v3/userinfo")
                         st.session_state.user_info = user_info_response
                         st.session_state.credentials_successfully_loaded_by_app = True
-                        on_config_change() # Resetta lo stato di applicazione della configurazione
+                        on_config_change() 
                         st.rerun()
                     except Exception as e_userinfo:
                         st.warning(f"🤖💬 Accesso riuscito, ma impossibile ottenere info utente: {e_userinfo}")
@@ -640,16 +632,14 @@ with st.sidebar:
     if st.session_state.auth_method == "Carica File JSON Account di Servizio":
         current_project_id_value = st.session_state.get('uploaded_project_id', "example-project-id")
     elif st.session_state.auth_method == "Accedi con Google (OAuth 2.0)":
-        # Se OAuth, l'utente DEVE specificare il progetto su cui operare,
-        # dato che il token utente non lo specifica per default per queste API.
-        current_project_id_value = st.session_state.get('gcp_project_id_input', "") # Inizia vuoto per OAuth
+        current_project_id_value = st.session_state.get('gcp_project_id_input', "")
 
     gcp_project_id = st.text_input("ID Progetto Google Cloud da usare", 
                                    value=current_project_id_value, 
                                    help="ID progetto GCP. Con JSON SA, precompilato. Con OAuth, inseriscilo.",
                                    on_change=on_config_change,
                                    key="gcp_project_id_input_field")
-    st.session_state.gcp_project_id_input = gcp_project_id # Salva sempre l'input corrente
+    st.session_state.gcp_project_id_input = gcp_project_id 
 
 
     gcp_location = st.text_input("Location Vertex AI", "europe-west1", 
@@ -681,7 +671,6 @@ with st.sidebar:
 
     if apply_config_button:
         all_fields_filled = True
-        # Controllo credenziali basato sul metodo scelto
         auth_successful = (st.session_state.auth_method == "Carica File JSON Account di Servizio" and st.session_state.credentials_successfully_loaded_by_app) or \
                           (st.session_state.auth_method == "Accedi con Google (OAuth 2.0)" and st.session_state.get('oauth_token'))
         
@@ -712,10 +701,9 @@ creds_available_for_schema = (st.session_state.auth_method == "Carica File JSON 
                              (st.session_state.auth_method == "Accedi con Google (OAuth 2.0)" and st.session_state.get('oauth_token'))
 
 if st.session_state.config_applied_successfully and creds_available_for_schema:
-    # Usa gcp_project_id dalla session_state che è stato aggiornato dall'input utente
-    current_gcp_project_id = st.session_state.get('gcp_project_id_input', gcp_project_id) # Fallback se non in session state
-    current_bq_dataset_id = bq_dataset_id # Dalla variabile locale (che prende valore dall'input)
-    current_bq_table_names_str = bq_table_names_str # Dalla variabile locale
+    current_gcp_project_id = st.session_state.get('gcp_project_id_input', gcp_project_id) 
+    current_bq_dataset_id = bq_dataset_id 
+    current_bq_table_names_str = bq_table_names_str 
 
     if current_gcp_project_id and current_bq_dataset_id and current_bq_table_names_str:
         schema_config_key = f"{current_gcp_project_id}_{current_bq_dataset_id}_{current_bq_table_names_str}"
@@ -782,9 +770,8 @@ if question_to_process:
     elif not st.session_state.table_schema_for_prompt: 
         st.error("🤖💬 Lo schema delle tabelle non è disponibile. Verifica la configurazione e i permessi, poi riapplica la configurazione.")
     else:
-        # Usa il gcp_project_id corrente dalla sidebar per le chiamate API
-        active_gcp_project_id = gcp_project_id # Questo è l'input text della sidebar
-        active_gcp_location = gcp_location # Questo è l'input text della sidebar
+        active_gcp_project_id = gcp_project_id 
+        active_gcp_location = gcp_location 
 
         st.session_state.sql_query = ""
         st.session_state.query_results = None
