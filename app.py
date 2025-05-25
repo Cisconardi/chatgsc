@@ -591,13 +591,14 @@ with st.sidebar:
             )
 
             if 'oauth_token' not in st.session_state or st.session_state.oauth_token is None:
-                result = oauth_component.authorize_button( # Rimosso l'argomento 'type'
+                result = oauth_component.authorize_button( 
                     name="Accedi con Google", 
                     icon="[https://www.google.com/favicon.ico](https://www.google.com/favicon.ico)",
                     redirect_uri=REDIRECT_URI,
                     scope=" ".join(SCOPES), 
                     pkce="S256",
                     use_container_width=True
+                    # Rimosso type="primary" che causava l'errore
                 )
                 
                 if result and "token" in result:
