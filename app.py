@@ -5,12 +5,15 @@ import vertexai # type: ignore
 from vertexai.generative_models import GenerativeModel, Part, GenerationConfig # type: ignore
 import pandas as pd
 import os
-# import tempfile # Non più necessario per il file JSON delle credenziali
+import tempfile
 import json
-# import atexit # Non più necessario per _cleanup_temp_creds_file
+import atexit
 import matplotlib.pyplot as plt 
 from google.oauth2.credentials import Credentials 
 import google.auth 
+# Rimosse le librerie OAuth specifiche non più necessarie per il flusso utente
+# from google_auth_oauthlib.flow import Flow 
+# import streamlit_oauth as oauth 
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
@@ -25,51 +28,144 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+
+# --- Inizio Setup Credenziali GCP ---
+_temp_gcp_creds_file_path = None
+
+def _cleanup_temp_creds_file():
+    global _temp_gcp_creds_file_path
+    if _temp_gcp_creds_file_path and os.path.exists(_temp_gcp_creds_file_path):
+        try:
+            os.remove(_temp_gcp_creds_file_path)
+            print(f"DEBUG: Pulito file credenziali temporaneo: {_temp_gcp_creds_file_path}")
+        except Exception as e:
+            print(f"DEBUG: Errore durante la pulizia del file credenziali temporaneo: {e}")
+            pass
+atexit.register(_cleanup_temp_creds_file)
+
+def reset_all_auth_states():
+    """Resetta tutti gli stati di autenticazione e configurazione."""
+    global _temp_gcp_creds_file_path
+    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+        del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+    if _temp_gcp_creds_file_path and os.path.exists(_temp_gcp_creds_file_path):
+        try: os.remove(_temp_gcp_creds_file_path)
+        except Exception: pass
+    _temp_gcp_creds_file_path = None
+    
+    keys_to_reset = [
+        'credentials_successfully_loaded_by_app', 'uploaded_project_id', 
+        'last_uploaded_file_id_processed_successfully', 'config_applied_successfully',
+        'table_schema_for_prompt', 'current_schema_config_key', 
+        'gcp_project_id_input' # Mantenuto per coerenza se l'utente lo modifica
+    ]
+    # Rimuovi chiavi specifiche di OAuth che non sono più usate
+    oauth_keys = ['oauth_credentials', 'user_email', 'auth_method', 
+                  'oauth_flow_auth_url', 'oauth_flow_state', 
+                  'oauth_flow_auth_url_generated_this_run', 'user']
+    for key in keys_to_reset + oauth_keys:
+        if key in st.session_state:
+            del st.session_state[key] 
+    initialize_session_state() 
+    print("DEBUG: Tutti gli stati di autenticazione e configurazione resettati per SA JSON.")
+
+
+def load_credentials_from_service_account_file(uploaded_file):
+    global _temp_gcp_creds_file_path
+    # Non chiamare reset_all_auth_states() qui per non perdere l'input del project_id se l'utente ricarica solo il file
+    # La pulizia delle vecchie credenziali avviene all'inizio di questa funzione se necessario.
+
+    if _temp_gcp_creds_file_path and os.path.exists(_temp_gcp_creds_file_path):
+        try: os.remove(_temp_gcp_creds_file_path)
+        except Exception: pass
+    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+        del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+    _temp_gcp_creds_file_path = None
+    st.session_state.credentials_successfully_loaded_by_app = False # Resetta lo stato di successo del caricamento
+
+
+    if uploaded_file is not None:
+        try:
+            gcp_sa_json_str = uploaded_file.getvalue().decode("utf-8")
+            creds_dict = json.loads(gcp_sa_json_str)
+            st.session_state.uploaded_project_id = creds_dict.get("project_id")
+            if not st.session_state.uploaded_project_id:
+                st.warning("🤖💬 Il file JSON caricato non contiene un 'project_id'. Sarà necessario inserirlo manualmente.")
+
+            with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_json_file:
+                temp_json_file.write(gcp_sa_json_str)
+                _temp_gcp_creds_file_path = temp_json_file.name
+            
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _temp_gcp_creds_file_path
+            print(f"DEBUG: Credenziali caricate da file upload: {_temp_gcp_creds_file_path}")
+            st.session_state.credentials_successfully_loaded_by_app = True 
+            st.session_state.last_uploaded_file_id_processed_successfully = uploaded_file.file_id
+            return True
+        except json.JSONDecodeError as json_err:
+            st.error(f"🤖💬 Il file caricato non contiene un JSON valido: {json_err}.")
+        except Exception as e:
+            st.error(f"🤖💬 Errore durante il caricamento del file delle credenziali: {e}")
+        
+        # Se c'è un errore, assicurati che lo stato sia pulito
+        if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+            del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+        _temp_gcp_creds_file_path = None
+        st.session_state.credentials_successfully_loaded_by_app = False
+        st.session_state.uploaded_project_id = None
+        st.session_state.last_uploaded_file_id_processed_successfully = None
+        return False
+    return False
+
+# --- Fine Setup Credenziali GCP ---
+
 # Modello Gemini da utilizzare
 TARGET_GEMINI_MODEL = "gemini-2.0-flash-001" 
 CHART_GENERATION_MODEL = "gemini-2.0-flash-001"
 
-# --- Testo Privacy Policy ---
+# --- Testo Privacy Policy (aggiornato per solo SA JSON) ---
 PRIVACY_POLICY_TEXT = """
 **Informativa sulla Privacy per ChatGSC**
 
 **Ultimo aggiornamento:** 26 Maggio 2025
 
-Benvenuto in ChatGSC! La tua privacy è importante per noi. Questa Informativa sulla Privacy spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le tue informazioni quando utilizzi la nostra applicazione ChatGSC per interagire con i tuoi dati di Google Search Console tramite Google BigQuery e Vertex AI, utilizzando l'autenticazione "Accedi con Google" (OAuth 2.0) gestita da Streamlit.
+Benvenuto in ChatGSC! La tua privacy è importante per noi. Questa Informativa sulla Privacy spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le tue informazioni quando utilizzi la nostra applicazione ChatGSC per interagire con i tuoi dati di Google Search Console tramite Google BigQuery e Vertex AI. 
+L'autenticazione per questa applicazione avviene tramite il caricamento di un file JSON di credenziali di un account di servizio Google Cloud.
 
 **1. Informazioni che Raccogliamo**
 
-* **Informazioni sull'Account Google:** Quando ti autentichi utilizzando "Accedi con Google", Streamlit (e di conseguenza la nostra applicazione) riceve informazioni di base dal tuo profilo Google per identificarti come utente autorizzato. Questo di solito include il tuo indirizzo email e il tuo nome. Non memorizziamo la tua password di Google. L'autenticazione e la gestione dei token sono gestite da Streamlit e Google.
-* **Autorizzazione all'accesso ai dati:** Affinché l'app possa accedere ai tuoi dati Google Cloud (BigQuery, Vertex AI) per tuo conto, dovrai concedere espliciti permessi (ambiti/scopes) durante il flusso di consenso OAuth. Gli ambiti richiesti da questa applicazione includono l'accesso per visualizzare il tuo indirizzo email, le informazioni del profilo, e per interagire con i servizi Google Cloud Platform (inclusi BigQuery per la lettura dei dati e Vertex AI per l'elaborazione del linguaggio).
-* **Dati di Google Search Console:** Con la tua autorizzazione tramite il consenso OAuth 2.0, l'applicazione accederà ai dati del tuo Google Search Console archiviati nel tuo progetto Google BigQuery. Questi dati includono metriche di performance del sito web come query di ricerca, clic, impressioni, CTR, posizione media, URL delle pagine, ecc. L'applicazione legge questi dati solo per rispondere alle tue domande.
-* **Interazioni con l'AI:** Le domande che poni all'AI e le risposte generate vengono processate tramite i servizi di Google Cloud Vertex AI, utilizzando le credenziali ottenute tramite il tuo consenso OAuth.
+* **File di Credenziali dell'Account di Servizio Google Cloud:** Per funzionare, l'applicazione richiede di caricare un file JSON contenente le credenziali di un account di servizio Google Cloud. Questo file contiene informazioni sensibili (come chiavi private) che permettono all'applicazione di agire per conto di tale account di servizio per accedere alle risorse Google Cloud (BigQuery e Vertex AI) specificate nel tuo progetto. **Questo file viene elaborato localmente nel browser o temporaneamente sul server durante l'esecuzione dell'app per impostare l'autenticazione, ma non viene memorizzato in modo persistente dall'applicazione ChatGSC stessa oltre la durata della sessione di utilizzo o la necessità di autenticazione.**
+* **Dati di Google Search Console:** Quando fornisci le credenziali e configuri l'ID del progetto, l'ID del dataset e i nomi delle tabelle, l'applicazione (agendo tramite l'account di servizio) accederà ai dati del tuo Google Search Console archiviati nel tuo progetto Google BigQuery. Questi dati includono metriche di performance del sito web come query di ricerca, clic, impressioni, CTR, posizione media, URL delle pagine, ecc. L'applicazione legge questi dati solo per rispondere alle tue domande.
+* **Interazioni con l'AI:** Le domande che poni all'AI e le risposte generate vengono processate tramite i servizi di Google Cloud Vertex AI, utilizzando l'autenticazione fornita dal tuo account di servizio.
 
 **2. Come Utilizziamo le Tue Informazioni**
 
 Utilizziamo le informazioni raccolte per:
 
-* **Fornire e Personalizzare il Servizio:** Per autenticarti, permetterti di interagire con i tuoi dati di Google Search Console, generare query SQL ed elaborare risposte tramite Vertex AI.
-* **Funzionamento dell'Applicazione:** Le credenziali ottenute tramite OAuth 2.0 sono usate esclusivamente per consentire all'applicazione di effettuare chiamate API autenticate a Google BigQuery e Vertex AI per tuo conto, nel contesto del progetto Google Cloud che specifichi.
+* **Fornire e Personalizzare il Servizio:** Per autenticare l'accesso ai tuoi dati GCP, permetterti di interagire con i tuoi dati di Google Search Console, generare query SQL ed elaborare risposte tramite Vertex AI.
+* **Funzionamento dell'Applicazione:** Il file di credenziali è usato esclusivamente per consentire all'applicazione di effettuare chiamate API autenticate a Google BigQuery e Vertex AI per tuo conto.
 
 **3. Condivisione e Divulgazione delle Informazioni**
 
-Non vendiamo né affittiamo le tue informazioni personali a terzi.
+Non vendiamo né affittiamo le tue informazioni o il contenuto del tuo file di credenziali a terzi.
 
-* **Con i Servizi Google Cloud Platform:** Le tue domande e i dati di Search Console vengono processati tramite Google BigQuery e Vertex AI come parte integrante del funzionamento dell'applicazione. L'utilizzo di questi servizi è soggetto alle informative sulla privacy e ai termini di servizio di Google Cloud.
+* **Con i Servizi Google Cloud Platform:** Le tue domande e i dati di Search Console vengono processati tramite Google BigQuery e Vertex AI come parte integrante del funzionamento dell'applicazione. L'utilizzo di questi servizi è soggetto alle informative sulla privacy e ai termini di servizio di Google Cloud. L'applicazione ChatGSC agisce come un client di questi servizi.
+* **File di Credenziali:** Il file di credenziali JSON caricato viene utilizzato per creare un file temporaneo sul server dove l'app è in esecuzione, al solo scopo di impostare la variabile d'ambiente `GOOGLE_APPLICATION_CREDENTIALS` per l'autenticazione delle librerie client di Google. Questo file temporaneo viene eliminato al termine della sessione dello script.
 * **Per Requisiti Legali:** Se richiesto dalla legge o in risposta a validi processi legali.
 
 **4. Sicurezza dei Dati**
 
-L'accesso ai tuoi dati avviene tramite il protocollo sicuro OAuth 2.0, gestito da Google e Streamlit. Adottiamo misure ragionevoli per proteggere le tue informazioni. Tuttavia, nessuna trasmissione via Internet o metodo di archiviazione elettronica è sicuro al 100%.
+* **File JSON Account di Servizio:** È tua responsabilità gestire la sicurezza del file JSON del tuo account di servizio prima di caricarlo. L'applicazione utilizza il file per l'autenticazione durante la sessione. Ti consigliamo di utilizzare account di servizio con i permessi minimi necessari (principio del privilegio minimo) per le operazioni che ChatGSC deve eseguire.
+* **Trasmissione Dati:** Quando interagisci con l'applicazione, i dati vengono trasmessi tramite protocolli sicuri (HTTPS se l'app è deployata correttamente).
 
 **5. Conservazione dei Dati**
 
-* **Token OAuth:** La gestione dei token è principalmente a carico di Streamlit e Google. L'applicazione non memorizza direttamente i token a lungo termine in modo accessibile.
+* **File di Credenziali Caricato:** Utilizzato temporaneamente per la sessione e poi eliminato.
 * **Dati di Search Console:** Non archiviamo copie permanenti dei tuoi dati di Google Search Console. I dati vengono letti da BigQuery "on-demand".
 
 **6. I Tuoi Diritti e Responsabilità**
 
-Puoi revocare l'accesso dell'applicazione ai tuoi dati Google in qualsiasi momento tramite le impostazioni di sicurezza del tuo Account Google. Sei responsabile della gestione dei permessi IAM sul progetto Google Cloud che specifichi per l'utilizzo con questa app.
+* Hai il controllo sul file JSON del tuo account di servizio e sui permessi IAM ad esso associati.
+* Puoi interrompere l'uso dell'applicazione in qualsiasi momento.
 
 **7. Modifiche a Questa Informativa sulla Privacy**
 
@@ -86,38 +182,13 @@ Se hai domande, contattaci a: info@francisconardi o su LinkedIn
 # --- Funzioni Core ---
 
 def get_gcp_credentials_object():
-    """
-    Tenta di ottenere le credenziali GCP predefinite. 
-    Queste dovrebbero essere disponibili se l'utente si è autenticato tramite st.login("google")
-    e ha concesso gli ambiti necessari per cloud-platform.
-    """
-    if st.session_state.get("user") is not None: # Utente loggato tramite st.login()
+    """Restituisce un oggetto credenziali GCP valido se GOOGLE_APPLICATION_CREDENTIALS è impostato."""
+    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         try:
-            # google.auth.default() dovrebbe raccogliere le credenziali dell'utente loggato
-            # se gli scope corretti sono stati richiesti e concessi durante il login.
-            credentials, project_id_from_creds = google.auth.default(
-                scopes=[ 
-                    "openid", 
-                    "https://www.googleapis.com/auth/userinfo.email",
-                    "https://www.googleapis.com/auth/userinfo.profile",
-                    "https://www.googleapis.com/auth/cloud-platform",
-                    "https://www.googleapis.com/auth/bigquery.readonly"
-                ]
-            )
-            # Il project_id restituito da google.auth.default() potrebbe essere quello di default dell'ambiente
-            # o quello associato alle credenziali utente se configurato.
-            # Per questa app, l'utente DEVE specificare il project_id su cui operare.
-            # Non precompiliamo gcp_project_id_input da qui per evitare confusione,
-            # ma potremmo usarlo come fallback se l'utente non inserisce nulla.
-            if project_id_from_creds and not st.session_state.get('gcp_project_id_input'):
-                 st.session_state.gcp_project_id_input = project_id_from_creds
-                 print(f"DEBUG: Project ID from google.auth.default(): {project_id_from_creds}")
+            credentials, _ = google.auth.load_credentials_from_file(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
             return credentials
-        except google.auth.exceptions.DefaultCredentialsError:
-            st.error("🤖💬 Impossibile ottenere credenziali GCP predefinite dopo il login. Assicurati che il tuo account Google abbia accesso a un progetto GCP e che gli ambiti richiesti siano stati concessi.")
-            return None
         except Exception as e:
-            st.error(f"🤖💬 Errore imprevisto nell'ottenere credenziali GCP: {e}")
+            print(f"DEBUG: Errore nel caricamento delle credenziali SA da file env var: {e}")
             return None
     return None
 
@@ -125,7 +196,7 @@ def get_gcp_credentials_object():
 def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_str: str) -> str | None:
     gcp_creds_obj = get_gcp_credentials_object()
     if not gcp_creds_obj: 
-        st.error("🤖💬 Le credenziali GCP non sono state caricate correttamente. Effettua l'accesso e applica la configurazione.")
+        st.error("🤖💬 Le credenziali GCP non sono state caricate correttamente. Carica un file JSON valido e applica la configurazione.")
         return None
     if not project_id: 
         st.error("🤖💬 ID Progetto Google Cloud non specificato. Per favore, inseriscilo nella configurazione.")
@@ -362,7 +433,7 @@ with st.expander(expander_title_text, expanded=False):
     st.write("- In GCP > \"API e servizi\" > \"Credenziali\", crea un \"ID client OAuth\".")
     st.write('  - Tipo applicazione: "Applicazione web".')
     st.write("  - Aggiungi l'URI di reindirizzamento corretto per la tua app Streamlit. Per questa app deployata su Streamlit Cloud, l'URI è `https://chatgsc.streamlit.app/oauth2callback`. Per lo sviluppo locale, è `http://localhost:8501/oauth2callback` (o la porta che usi).")
-    st.write("  - Prendi nota dell'ID Client e del Client Secret. Dovrai aggiungerli come secrets di Streamlit (vedi file `.streamlit/secrets.toml` di esempio).")
+    st.write("  - Prendi nota dell'ID Client e del Client Secret. Dovrai aggiungerli come secrets di Streamlit nel formato specificato nella documentazione di `st.login()` (vedi `.streamlit/secrets.toml` di esempio).")
     st.write('  - Configura la "Schermata consenso OAuth" con gli ambiti necessari (almeno `openid`, `https://www.googleapis.com/auth/userinfo.email`, `https://www.googleapis.com/auth/userinfo.profile`, `https://www.googleapis.com/auth/cloud-platform`, `https://www.googleapis.com/auth/bigquery.readonly`).')
     st.write("---")
     st.subheader("3. Abilitazione API Necessarie:")
@@ -411,46 +482,48 @@ def on_config_change():
 # --- Sidebar ---
 with st.sidebar:
     st.header("⚙️ Configurazione")
-    
-    st.subheader("1. Autenticazione Google (OAuth 2.0)")
+
+    st.subheader("1. Autenticazione Google")
     # Verifica se i secrets per st.login("google") sono configurati
     google_client_id_from_secrets = st.secrets.get("auth.google.client_id")
     google_client_secret_from_secrets = st.secrets.get("auth.google.client_secret")
 
     if not (google_client_id_from_secrets and google_client_secret_from_secrets):
-        st.error("🤖💬 Client ID o Client Secret per Google OAuth non configurati nei secrets dell'app. L'autenticazione non funzionerà.")
+        st.error("🤖💬 Client ID o Client Secret per Google OAuth non configurati correttamente nei secrets dell'app. L'autenticazione non funzionerà. Controlla il formato in `.streamlit/secrets.toml` (deve essere sotto `[auth.google]`).")
     else:
         # Ambiti necessari oltre a quelli di default (openid, email, profile)
-        additional_scopes = [
-            "https://www.googleapis.com/auth/cloud-platform", 
-            "https://www.googleapis.com/auth/bigquery.readonly"
+        # Questi devono essere abilitati nella schermata di consenso OAuth in GCP
+        required_scopes = [
+            "openid", 
+            "[https://www.googleapis.com/auth/userinfo.email](https://www.googleapis.com/auth/userinfo.email)",
+            "[https://www.googleapis.com/auth/userinfo.profile](https://www.googleapis.com/auth/userinfo.profile)",
+            "[https://www.googleapis.com/auth/cloud-platform](https://www.googleapis.com/auth/cloud-platform)", 
+            "[https://www.googleapis.com/auth/bigquery.readonly](https://www.googleapis.com/auth/bigquery.readonly)"
         ]
         if not st.session_state.get("user"): 
             st.login_button(
                 label="Accedi con Google", 
                 provider="google", 
-                scopes=additional_scopes, 
+                scopes=required_scopes, 
                 key="google_login_button_main",
                 on_submit=on_config_change # Resetta config se l'utente accede/esce
             )
-            st.info("🤖💬 Clicca il pulsante sopra per accedere con Google.")
+            st.info("🤖💬 Clicca il pulsante sopra per accedere con Google e consentire l'accesso ai dati.")
         else: 
             user_info = st.session_state.user
             user_email = user_info.get("email", "Email non disponibile")
             st.success(f"🤖💬 Autenticato come: {user_email}")
-            
+            # Non serve più credentials_successfully_loaded_by_app, usiamo st.session_state.user
             if st.button("Logout da Google", key="google_logout_button_main"):
                 st.logout()
-                # on_config_change() # st.logout() dovrebbe triggerare un rerun che resetta lo stato
-                # reset_all_auth_states() # st.logout() dovrebbe già resettare 'user'
-
+                # on_config_change() e reset_all_auth_states() sono impliciti o gestiti da st.logout() + rerun
+    
     st.divider()
     st.subheader("2. Parametri Query")
     
-    # L'utente DEVE inserire il project ID quando usa OAuth
     gcp_project_id = st.text_input("ID Progetto Google Cloud da usare", 
                                    value=st.session_state.get('gcp_project_id_input', ""), 
-                                   help="ID progetto GCP su cui operare.",
+                                   help="ID progetto GCP su cui operare (obbligatorio).",
                                    on_change=on_config_change,
                                    key="gcp_project_id_input_field")
     st.session_state.gcp_project_id_input = gcp_project_id 
@@ -474,7 +547,7 @@ with st.sidebar:
     few_shot_examples = "" 
 
     st.divider() 
-    enable_chart_generation = st.checkbox("📊 Crea grafico con AI", value=False, on_change=on_config_change, key="enable_chart")
+    enable_chart_generation = st.checkbox("📊 Crea grafico con AI", value=st.session_state.get('enable_chart_generation',False), on_change=on_config_change, key="enable_chart")
     st.session_state.enable_chart_generation = enable_chart_generation 
 
     st.divider() 
@@ -695,11 +768,15 @@ with right_footer_col:
 
 if st.session_state.get('show_privacy_policy', False):
     st.subheader("Informativa sulla Privacy per ChatGSC")
-    privacy_container = st.container()
+    privacy_container = st.container() # Usiamo un container per la policy
     with privacy_container: 
-        privacy_html = PRIVACY_POLICY_TEXT.replace('**', '<b>').replace('\n', '<br>')
-        if privacy_html.endswith('<br>'):
-            privacy_html = privacy_html[:-4]
+        # Converti il testo Markdown in HTML per lo scroll e la formattazione base
+        # Nota: la conversione da Markdown a HTML qui è basica. 
+        # Per un rendering Markdown completo dentro un div scrollabile, st.dialog sarebbe stato meglio.
+        privacy_html = PRIVACY_POLICY_TEXT.replace('\n', '<br>')
+        # Semplice sostituzione per il grassetto, non ideale per tutti i casi Markdown
+        privacy_html = privacy_html.replace('**', '<b>').replace('**', '</b>') 
+        
         st.markdown(f"<div style='height: 400px; overflow-y: auto; border: 1px solid #ccc; padding:10px;'>{privacy_html}</div>", unsafe_allow_html=True)
     if st.button("Chiudi Informativa", key="close_privacy_policy_main_area"):
         st.session_state.show_privacy_policy = False
