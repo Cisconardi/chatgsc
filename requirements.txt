@@ -1,8 +1,10 @@
 streamlit
-google-cloud-aiplatform>=1.38.0  # Specifica una versione recente per Gemini
+google-cloud-aiplatform>=1.38.0
 google-cloud-bigquery>=3.0.0
-google-cloud-bigquery-storage
 pandas>=1.0.0
-google-auth>=2.0.0 # Spesso una dipendenza implicita, ma meglio esplicitarla
-db-dtypes # Aggiunto per risolvere l'errore to_dataframe()
+google-auth>=2.17.0
+google-auth-oauthlib>=1.0.0 
+requests-oauthlib
+db-dtypes
 matplotlib
+google-cloud-bigquery-storage
