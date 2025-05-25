@@ -594,10 +594,10 @@ with st.sidebar:
                  host_port_path = session_info.ws_base_url.split("://")[1].split("/stream")[0]
                  REDIRECT_URI = f"{http_protocol}://{host_port_path}/" # Usa la root dell'app
             else: # Fallback per locale o se non ottenibile
-                 REDIRECT_URI = "http://localhost:8501/" # Assicurati che sia corretto per il tuo ambiente
+                 REDIRECT_URI = "https://chatgsc.streamlit.app" # Assicurati che sia corretto per il tuo ambiente
             st.caption(f"DEBUG: Redirect URI calcolato: {REDIRECT_URI}")
         except Exception:
-             REDIRECT_URI = "http://localhost:8501/" # Fallback
+             REDIRECT_URI = "https://chatgsc.streamlit.app" # Fallback
              st.caption(f"DEBUG: Redirect URI (fallback): {REDIRECT_URI}")
 
 
