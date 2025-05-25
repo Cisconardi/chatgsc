@@ -11,8 +11,7 @@ import atexit
 import matplotlib.pyplot as plt 
 from google.oauth2.credentials import Credentials 
 import google.auth 
-from google_auth_oauthlib.flow import Flow # Import CORRETTO per OAuth ufficiale Google
-import webbrowser # Può essere utile per aprire l'URL di autorizzazione, anche se st.link_button è preferibile
+from google_auth_oauthlib.flow import Flow 
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
@@ -34,6 +33,8 @@ _temp_gcp_creds_file_path = None
 # OAuth Client ID (impostato staticamente come da JSON fornito dall'utente)
 # Il CLIENT_SECRET DEVE rimanere in st.secrets
 OAUTH_CLIENT_ID_STATIC = "266022298110-avmhjfgbpsfhbc9m6b5onv3ift7rsdfq.apps.googleusercontent.com"
+# URI di Reindirizzamento Fisso per il deploy
+DEPLOYED_REDIRECT_URI = "https://chatgsc.streamlit.app/"
 
 
 def _cleanup_temp_creds_file():
@@ -598,25 +599,11 @@ with st.sidebar:
         # Altrimenti, per lo sviluppo locale, sarà http://localhost:8501/
         
         # URL specifico per il deploy su Streamlit Cloud
-        APP_DEPLOY_URL = "[https://chatgsc.streamlit.app/](https://chatgsc.streamlit.app/)" 
-        LOCALHOST_URL = "http://localhost:8501/"
-
-        # Tenta di rilevare l'ambiente di Streamlit Cloud
-        # Questo è un approccio euristico. Una variabile d'ambiente impostata da Streamlit Cloud sarebbe più affidabile.
-        # Ad esempio, Streamlit Cloud imposta STREAMLIT_SERVER_ADDRESS
-        server_address_env = os.environ.get("STREAMLIT_SERVER_ADDRESS")
+        # Assicurati che questo corrisponda all'URL della tua app deployata
+        REDIRECT_URI = "[https://chatgsc.streamlit.app/](https://chatgsc.streamlit.app/)" 
         
-        if server_address_env and "streamlit.app" in server_address_env:
-            # Assumiamo che se STREAMLIT_SERVER_ADDRESS contiene streamlit.app, siamo su Streamlit Cloud.
-            # Costruisci l'URL base.
-            # L'URL dell'app è tipicamente https://<subdomain>.streamlit.app/
-            # Potrebbe essere necessario estrarre il sottodominio o usare un URL fisso se noto.
-            # Per questa app specifica:
-            REDIRECT_URI = APP_DEPLOY_URL
-            print(f"DEBUG: Using Streamlit Cloud REDIRECT_URI: {REDIRECT_URI}")
-        else: # Sviluppo locale o altro ambiente
-            REDIRECT_URI = LOCALHOST_URL
-            print(f"DEBUG: Using localhost REDIRECT_URI: {REDIRECT_URI}")
+        # Per lo sviluppo locale, decommenta la riga seguente e commenta quella sopra:
+        # REDIRECT_URI = "http://localhost:8501/" 
         
         st.caption(f"DEBUG: OAuth Redirect URI in uso: {REDIRECT_URI}")
 
@@ -636,7 +623,7 @@ with st.sidebar:
             client_config_dict = {
                 "web": {
                     "client_id": OAUTH_CLIENT_ID_STATIC,
-                    "project_id": st.session_state.get('gcp_project_id_input') or "nlp-project-448915", # Usa il project_id inserito o un default
+                    "project_id": st.session_state.get('gcp_project_id_input') or "nlp-project-448915", 
                     "auth_uri": AUTHORIZE_ENDPOINT,
                     "token_uri": TOKEN_ENDPOINT,
                     "auth_provider_x509_cert_url": "[https://www.googleapis.com/oauth2/v1/certs](https://www.googleapis.com/oauth2/v1/certs)",
@@ -677,8 +664,6 @@ with st.sidebar:
                         
                         if credentials and credentials.id_token:
                             try:
-                                # Per ottenere l'email, potremmo usare il token ID
-                                # Richiede google-auth per verify_oauth2_token
                                 import google.oauth2.id_token
                                 import google.auth.transport.requests
                                 request = google.auth.transport.requests.Request()
@@ -705,7 +690,6 @@ with st.sidebar:
                         st.session_state.oauth_flow_auth_url = auth_url
                         st.session_state.oauth_flow_state = state
                         
-                        # Usa st.link_button per un aspetto più nativo e una gestione migliore dei link
                         st.link_button("Accedi con Google", auth_url, use_container_width=True)
                         st.info("🤖💬 Clicca il pulsante sopra per accedere con Google.")
                     except Exception as e_auth_url:
@@ -897,7 +881,7 @@ if question_to_process:
                     st.error("Fallimento esecuzione query BigQuery (vedi messaggi di errore sopra).")
             
             if st.session_state.query_results is not None:
-                with st.spinner(f"�💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
+                with st.spinner(f"🤖💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
                     st.session_state.results_summary = summarize_results_with_llm(
                         active_gcp_project_id, active_gcp_location, llm_model_name_to_use, 
                         st.session_state.query_results, question_to_process
