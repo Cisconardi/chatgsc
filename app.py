@@ -11,7 +11,8 @@ import atexit
 import matplotlib.pyplot as plt 
 from google.oauth2.credentials import Credentials # Per OAuth
 import google.auth # Per ottenere il progetto di default dalle credenziali OAuth
-import streamlit_oauth as oauth # Nuova libreria per OAuth
+from google_auth_oauthlib.flow import Flow # Per il flusso OAuth ufficiale
+import webbrowser # Per aprire l'URL di autorizzazione
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
@@ -55,8 +56,8 @@ def reset_all_auth_states():
         'credentials_successfully_loaded_by_app', 'uploaded_project_id', 
         'last_uploaded_file_id_processed_successfully', 'config_applied_successfully',
         'table_schema_for_prompt', 'current_schema_config_key', 
-        'oauth_token', 
-        'user_info', 
+        'oauth_credentials', # Modificato da 'oauth_token'
+        'user_email', # Per email utente da OAuth
         'auth_method' 
     ]
     for key in keys_to_reset:
@@ -173,20 +174,14 @@ Se hai domande, contattaci a: info@francisconardi o su LinkedIn
 
 def get_gcp_credentials_object():
     """Restituisce un oggetto credenziali GCP valido o None."""
-    if st.session_state.get('auth_method') == 'Accedi con Google (OAuth 2.0)' and 'oauth_token' in st.session_state:
-        token_info = st.session_state.oauth_token
-        if token_info and 'access_token' in token_info:
+    if st.session_state.get('auth_method') == 'Accedi con Google (OAuth 2.0)' and 'oauth_credentials' in st.session_state:
+        creds_dict = st.session_state.oauth_credentials
+        if creds_dict:
             try:
-                return Credentials(
-                    token=token_info['access_token'],
-                    refresh_token=token_info.get('refresh_token'), 
-                    token_uri="https://oauth2.googleapis.com/token", 
-                    client_id=st.secrets.get("OAUTH_CLIENT_ID"),    
-                    client_secret=st.secrets.get("OAUTH_CLIENT_SECRET"), 
-                    scopes=token_info.get('scope', '').split(' ') 
-                )
+                # Ricostruisci l'oggetto Credentials dalla sua rappresentazione dizionario
+                return Credentials.from_authorized_user_info(info=creds_dict, scopes=creds_dict.get('scopes'))
             except Exception as e:
-                print(f"DEBUG: Errore nella creazione dell'oggetto Credentials da OAuth token: {e}")
+                print(f"DEBUG: Errore nella creazione dell'oggetto Credentials da OAuth dict: {e}")
                 return None
     elif st.session_state.get('auth_method') == "Carica File JSON Account di Servizio" and os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         try:
@@ -556,20 +551,22 @@ with st.sidebar:
         
         AUTHORIZE_ENDPOINT = "[https://accounts.google.com/o/oauth2/v2/auth](https://accounts.google.com/o/oauth2/v2/auth)"
         TOKEN_ENDPOINT = "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)"
-        REVOKE_ENDPOINT = "[https://oauth2.googleapis.com/revoke](https://oauth2.googleapis.com/revoke)"
+        REVOKE_ENDPOINT = "[https://oauth2.googleapis.com/revoke](https://oauth2.googleapis.com/revoke)" # Non usato attivamente ma utile per completezza
         
+        # Determina REDIRECT_URI
         try:
-            from streamlit.web.server.server import Server
+            from streamlit.web.server.server import Server 
             session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
             if session_info and hasattr(session_info, 'ws_base_url'):
                 http_protocol = "https" if session_info.ws_base_url.startswith("wss:") else "http"
                 host_port_path = session_info.ws_base_url.split("://")[1].split("/stream")[0]
-                REDIRECT_URI = f"{http_protocol}://{host_port_path}/"
+                REDIRECT_URI = f"{http_protocol}://{host_port_path}/" 
             else: 
                 REDIRECT_URI = "http://localhost:8501/" 
         except Exception:
              REDIRECT_URI = "http://localhost:8501/" 
         # st.caption(f"DEBUG: OAuth Redirect URI: {REDIRECT_URI}")
+
 
         SCOPES = [
             "openid", "[https://www.googleapis.com/auth/userinfo.email](https://www.googleapis.com/auth/userinfo.email)",
@@ -591,6 +588,7 @@ with st.sidebar:
             )
 
             if 'oauth_token' not in st.session_state or st.session_state.oauth_token is None:
+                # Rimosso l'argomento 'type' che causava l'errore
                 result = oauth_component.authorize_button( 
                     name="Accedi con Google", 
                     icon="[https://www.google.com/favicon.ico](https://www.google.com/favicon.ico)",
@@ -598,7 +596,6 @@ with st.sidebar:
                     scope=" ".join(SCOPES), 
                     pkce="S256",
                     use_container_width=True
-                    # Rimosso type="primary" che causava l'errore
                 )
                 
                 if result and "token" in result:
@@ -678,7 +675,7 @@ with st.sidebar:
             st.error("🤖💬 ID Progetto Google Cloud è obbligatorio.")
             all_fields_filled = False
         if not gcp_location: st.error("🤖💬 Location Vertex AI è obbligatoria."); all_fields_filled = False
-        if not bq_dataset_id: st.error("🤖💬 ID Dataset BigQuery è obbligatorio."); all_fields_filled = False
+        if not bq_dataset_id: st.error("�💬 ID Dataset BigQuery è obbligatorio."); all_fields_filled = False
         if not bq_table_names_str: st.error("🤖💬 Nomi Tabelle GSC sono obbligatori."); all_fields_filled = False
         
         if all_fields_filled:
@@ -890,4 +887,4 @@ if st.session_state.get('show_privacy_policy', False):
         st.markdown(f"<div style='height: 400px; overflow-y: auto; border: 1px solid #ccc; padding:10px;'>{privacy_html}</div>", unsafe_allow_html=True)
     if st.button("Chiudi Informativa", key="close_privacy_policy_main_area"):
         st.session_state.show_privacy_policy = False
-        st.rerun()
+        st.rerun() 
