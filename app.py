@@ -11,7 +11,7 @@ import atexit
 import matplotlib.pyplot as plt 
 from google.oauth2.credentials import Credentials 
 import google.auth 
-from google_auth_oauthlib.flow import Flow 
+from google_auth_oauthlib.flow import Flow # Usato per il flusso OAuth ufficiale
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
@@ -185,8 +185,8 @@ def get_gcp_credentials_object():
         creds_dict = st.session_state.oauth_credentials
         if creds_dict:
             try:
-                oauth_client_secret = st.secrets.get("OAUTH_CLIENT_SECRET")
-                if not oauth_client_secret:
+                oauth_client_secret_from_secrets = st.secrets.get("OAUTH_CLIENT_SECRET")
+                if not oauth_client_secret_from_secrets:
                     print("DEBUG: OAUTH_CLIENT_SECRET non trovato nei secrets per OAuth.")
                     return None
                 
@@ -195,7 +195,7 @@ def get_gcp_credentials_object():
                     refresh_token=creds_dict.get('refresh_token'), 
                     token_uri=creds_dict.get('token_uri', "https://oauth2.googleapis.com/token"), 
                     client_id=creds_dict.get('client_id', OAUTH_CLIENT_ID_STATIC),    
-                    client_secret=oauth_client_secret, 
+                    client_secret=oauth_client_secret_from_secrets, 
                     scopes=creds_dict.get('scopes')
                 )
             except Exception as e:
@@ -457,7 +457,7 @@ with st.expander(expander_title_text, expanded=False):
     st.write("- Se preferisci usare OAuth 2.0 (l'utente si autentica con il proprio account Google):")
     st.write('  - In GCP > "API e servizi" > "Credenziali", crea un "ID client OAuth".')
     st.write('  - Tipo applicazione: "Applicazione web".')
-    st.write("  - Aggiungi l'URI di reindirizzamento corretto per la tua app Streamlit (es. `http://localhost:8501` per locale, o l'URL della tua app deployata).")
+    st.write("  - Aggiungi l'URI di reindirizzamento corretto per la tua app Streamlit (es. `http://localhost:8501/` per locale, o l'URL della tua app deployata come `https://chatgsc.streamlit.app/`).")
     st.write("  - Prendi nota dell'ID Client e del Client Secret. Dovrai aggiungerli come secrets di Streamlit (`OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET`).")
     st.write('  - Configura la "Schermata consenso OAuth" con gli ambiti necessari (es. `openid`, `userinfo.email`, `bigquery.readonly`, `cloud-platform`).')
     st.write("---")
@@ -524,7 +524,6 @@ with st.sidebar:
     auth_method_options = ["Carica File JSON Account di Servizio"]
     OAUTH_CLIENT_SECRET_FROM_SECRETS = st.secrets.get("OAUTH_CLIENT_SECRET")
     
-    # Usa OAUTH_CLIENT_ID_STATIC definito globalmente
     if OAUTH_CLIENT_ID_STATIC and OAUTH_CLIENT_SECRET_FROM_SECRETS:
         auth_method_options.append("Accedi con Google (OAuth 2.0)")
 
@@ -592,20 +591,35 @@ with st.sidebar:
         # Controlla se l'app è in esecuzione su Streamlit Cloud
         # STREAMLIT_SERVER_ADDRESS è una variabile d'ambiente che può essere usata
         # per identificare l'URL pubblico quando deployato.
-        server_address = os.environ.get("STREAMLIT_SERVER_ADDRESS")
-        if server_address: # Probabilmente Streamlit Cloud o un ambiente deployato
-            # Assicurati che l'URL inizi con https
-            if not server_address.startswith("http"):
-                app_url_base = "https://" + server_address
+        server_address_env = os.environ.get("STREAMLIT_SERVER_ADDRESS")
+        streamlit_app_url_env = os.environ.get("STREAMLIT_APP_URL") # Altra possibile variabile
+
+        if streamlit_app_url_env: # Priorità a questa se definita
+            REDIRECT_URI = streamlit_app_url_env.strip("/") + "/"
+            print(f"DEBUG: Using STREAMLIT_APP_URL for REDIRECT_URI: {REDIRECT_URI}")
+        elif server_address_env: 
+            if not server_address_env.startswith("http"):
+                app_url_base = "https://" + server_address_env
             else:
-                app_url_base = server_address
-            REDIRECT_URI = app_url_base.strip("/") + "/" # Assicura una barra finale
-            print(f"DEBUG: Using Streamlit Cloud REDIRECT_URI: {REDIRECT_URI}")
-        else: # Sviluppo locale
-            # In sviluppo locale, Streamlit di solito gira su localhost:8501
-            # Se usi una porta diversa, aggiorna questo valore.
-            REDIRECT_URI = "http://localhost:8501/"
-            print(f"DEBUG: Using localhost REDIRECT_URI: {REDIRECT_URI}")
+                app_url_base = server_address_env
+            REDIRECT_URI = app_url_base.strip("/") + "/" 
+            print(f"DEBUG: Using STREAMLIT_SERVER_ADDRESS for REDIRECT_URI: {REDIRECT_URI}")
+        else: # Sviluppo locale o ambiente non Streamlit Cloud standard
+            try:
+                # Tenta di ottenere l'URL base da Streamlit Server (può essere instabile)
+                from streamlit.web.server.server import Server
+                session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
+                if session_info and hasattr(session_info, 'ws_base_url'):
+                    http_protocol = "https" if session_info.ws_base_url.startswith("wss:") else "http"
+                    host_port_path = session_info.ws_base_url.split("://")[1].split("/stream")[0]
+                    REDIRECT_URI = f"{http_protocol}://{host_port_path}/"
+                    print(f"DEBUG: Using Streamlit Server info for REDIRECT_URI: {REDIRECT_URI}")
+                else: 
+                    REDIRECT_URI = "http://localhost:8501/" # Fallback per locale
+                    print(f"DEBUG: Fallback to localhost (1) for REDIRECT_URI: {REDIRECT_URI}")
+            except Exception:
+                 REDIRECT_URI = "http://localhost:8501/" # Fallback robusto
+                 print(f"DEBUG: Fallback to localhost (2) for REDIRECT_URI: {REDIRECT_URI}")
         st.caption(f"DEBUG: OAuth Redirect URI in uso: {REDIRECT_URI}")
 
 
@@ -613,7 +627,7 @@ with st.sidebar:
         if REDIRECT_URI.startswith("http://localhost"):
             os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
             print("DEBUG: OAUTHLIB_INSECURE_TRANSPORT impostato a 1 per sviluppo locale.")
-        else: # Per produzione, assicurati che sia HTTPS e rimuovi la variabile se presente
+        else: 
             if 'OAUTHLIB_INSECURE_TRANSPORT' in os.environ:
                 del os.environ['OAUTHLIB_INSECURE_TRANSPORT']
                 print("DEBUG: OAUTHLIB_INSECURE_TRANSPORT rimosso.")
