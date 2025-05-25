@@ -185,14 +185,13 @@ def get_gcp_credentials_object():
         creds_dict = st.session_state.oauth_credentials
         if creds_dict:
             try:
-                # Per OAuth, il client_secret è necessario per il refresh token, quindi lo leggiamo dai secrets
                 oauth_client_secret = st.secrets.get("OAUTH_CLIENT_SECRET")
                 if not oauth_client_secret:
                     print("DEBUG: OAUTH_CLIENT_SECRET non trovato nei secrets per OAuth.")
                     return None
                 
                 return Credentials(
-                    token=creds_dict.get('token'), # 'access_token' da streamlit-oauth era token
+                    token=creds_dict.get('token'),
                     refresh_token=creds_dict.get('refresh_token'), 
                     token_uri=creds_dict.get('token_uri', "https://oauth2.googleapis.com/token"), 
                     client_id=creds_dict.get('client_id', OAUTH_CLIENT_ID_STATIC),    
@@ -523,10 +522,9 @@ with st.sidebar:
     st.header("⚙️ Configurazione")
 
     auth_method_options = ["Carica File JSON Account di Servizio"]
-    # Leggi OAUTH_CLIENT_ID dai secrets. Se non presente, l'opzione OAuth non sarà mostrata.
-    # OAUTH_CLIENT_ID_STATIC è ora usato direttamente, ma il client secret deve venire dai secrets.
     OAUTH_CLIENT_SECRET_FROM_SECRETS = st.secrets.get("OAUTH_CLIENT_SECRET")
     
+    # Usa OAUTH_CLIENT_ID_STATIC definito globalmente
     if OAUTH_CLIENT_ID_STATIC and OAUTH_CLIENT_SECRET_FROM_SECRETS:
         auth_method_options.append("Accedi con Google (OAuth 2.0)")
 
@@ -573,6 +571,7 @@ with st.sidebar:
     elif st.session_state.auth_method == "Accedi con Google (OAuth 2.0)":
         st.subheader("1b. Autenticazione Google (OAuth 2.0)")
         
+        # Definizioni degli endpoint e degli scope come stringhe URL semplici e corrette
         AUTHORIZE_ENDPOINT = "[https://accounts.google.com/o/oauth2/v2/auth](https://accounts.google.com/o/oauth2/v2/auth)"
         TOKEN_ENDPOINT = "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)"
         
@@ -589,19 +588,32 @@ with st.sidebar:
         # Questo deve essere configurato esattamente così in GCP Console.
         # Per lo sviluppo locale, è http://localhost:8501/ (o la porta che usi).
         
-        # Tentativo di determinare l'URL base dell'app Streamlit
-        # Se l'app è su [https://chatgsc.streamlit.app/](https://chatgsc.streamlit.app/), allora REDIRECT_URI = "[https://chatgsc.streamlit.app/](https://chatgsc.streamlit.app/)"
-        REDIRECT_URI = "[https://chatgsc.streamlit.app/](https://chatgsc.streamlit.app/)" # Impostato staticamente per il deploy
-        
-        # Per lo sviluppo locale, commenta la riga sopra e decommenta quella sotto:
-        # REDIRECT_URI = "http://localhost:8501/" 
-        
+        # Logica per determinare REDIRECT_URI
+        # Controlla se l'app è in esecuzione su Streamlit Cloud
+        # STREAMLIT_SERVER_ADDRESS è una variabile d'ambiente che può essere usata
+        # per identificare l'URL pubblico quando deployato.
+        server_address = os.environ.get("STREAMLIT_SERVER_ADDRESS")
+        if server_address: # Probabilmente Streamlit Cloud o un ambiente deployato
+            # Assicurati che l'URL inizi con https
+            if not server_address.startswith("http"):
+                app_url_base = "https://" + server_address
+            else:
+                app_url_base = server_address
+            REDIRECT_URI = app_url_base.strip("/") + "/" # Assicura una barra finale
+            print(f"DEBUG: Using Streamlit Cloud REDIRECT_URI: {REDIRECT_URI}")
+        else: # Sviluppo locale
+            # In sviluppo locale, Streamlit di solito gira su localhost:8501
+            # Se usi una porta diversa, aggiorna questo valore.
+            REDIRECT_URI = "http://localhost:8501/"
+            print(f"DEBUG: Using localhost REDIRECT_URI: {REDIRECT_URI}")
         st.caption(f"DEBUG: OAuth Redirect URI in uso: {REDIRECT_URI}")
 
+
+        # Consenti HTTP per OAuth durante lo sviluppo locale (necessario per google-auth-oauthlib)
         if REDIRECT_URI.startswith("http://localhost"):
             os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
             print("DEBUG: OAUTHLIB_INSECURE_TRANSPORT impostato a 1 per sviluppo locale.")
-        else: 
+        else: # Per produzione, assicurati che sia HTTPS e rimuovi la variabile se presente
             if 'OAUTHLIB_INSECURE_TRANSPORT' in os.environ:
                 del os.environ['OAUTHLIB_INSECURE_TRANSPORT']
                 print("DEBUG: OAUTHLIB_INSECURE_TRANSPORT rimosso.")
@@ -612,7 +624,7 @@ with st.sidebar:
             client_config_dict = {
                 "web": {
                     "client_id": OAUTH_CLIENT_ID_STATIC,
-                    "project_id": st.session_state.get('gcp_project_id_input') or "nlp-project-448915", # Usa il project_id inserito o un default
+                    "project_id": st.session_state.get('gcp_project_id_input') or "nlp-project-448915", 
                     "auth_uri": AUTHORIZE_ENDPOINT,
                     "token_uri": TOKEN_ENDPOINT,
                     "auth_provider_x509_cert_url": "[https://www.googleapis.com/oauth2/v1/certs](https://www.googleapis.com/oauth2/v1/certs)",
@@ -746,7 +758,7 @@ with st.sidebar:
             st.error("🤖💬 ID Progetto Google Cloud è obbligatorio.")
             all_fields_filled = False
         if not gcp_location: st.error("🤖💬 Location Vertex AI è obbligatoria."); all_fields_filled = False
-        if not bq_dataset_id: st.error("🤖💬 ID Dataset BigQuery è obbligatorio."); all_fields_filled = False
+        if not bq_dataset_id: st.error("�💬 ID Dataset BigQuery è obbligatorio."); all_fields_filled = False
         if not bq_table_names_str: st.error("🤖💬 Nomi Tabelle GSC sono obbligatori."); all_fields_filled = False
         
         if all_fields_filled:
