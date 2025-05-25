@@ -11,8 +11,8 @@ import atexit
 import matplotlib.pyplot as plt 
 from google.oauth2.credentials import Credentials 
 import google.auth 
-from google_auth_oauthlib.flow import Flow # Import CORRETTO per OAuth
-# import streamlit_oauth as oauth # RIMOSSO - Non più utilizzato
+from google_auth_oauthlib.flow import Flow 
+import webbrowser
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
@@ -60,7 +60,8 @@ def reset_all_auth_states():
         'user_email', 
         'auth_method',
         'oauth_flow_auth_url', 
-        'oauth_flow_state'
+        'oauth_flow_state',
+        'oauth_flow_auth_url_generated_this_run' # Aggiunto per reset
     ]
     for key in keys_to_reset:
         if key in st.session_state:
@@ -180,7 +181,6 @@ def get_gcp_credentials_object():
         creds_dict = st.session_state.oauth_credentials
         if creds_dict:
             try:
-                # Ricostruisci l'oggetto Credentials dalla sua rappresentazione dizionario
                 return Credentials.from_authorized_user_info(info=creds_dict, scopes=creds_dict.get('scopes'))
             except Exception as e:
                 print(f"DEBUG: Errore nella creazione dell'oggetto Credentials da OAuth dict: {e}")
@@ -475,7 +475,7 @@ def initialize_session_state():
         'config_applied_successfully': False, 'show_privacy_policy': False,
         'user_question_from_button': "", 'submit_from_preset_button': False,
         'auth_method': "Carica File JSON Account di Servizio", 
-        'oauth_credentials': None, # Modificato per usare google-auth-oauthlib
+        'oauth_credentials': None, # Modificato per google-auth-oauthlib
         'user_email': None, 
         'gcp_project_id_input': "example-project-id",
         'enable_chart_generation': False,
@@ -553,12 +553,7 @@ with st.sidebar:
     elif st.session_state.auth_method == "Accedi con Google (OAuth 2.0)":
         st.subheader("1b. Autenticazione Google (OAuth 2.0)")
         
-        # Definizioni degli endpoint e degli scope come stringhe semplici e corrette
-        AUTHORIZE_ENDPOINT = "[https://accounts.google.com/o/oauth2/v2/auth](https://accounts.google.com/o/oauth2/v2/auth)"
-        TOKEN_ENDPOINT = "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)"
-        # REVOKE_ENDPOINT = "[https://oauth2.googleapis.com/revoke](https://oauth2.googleapis.com/revoke)" # Non usato attivamente
-        
-        SCOPES = [
+        SCOPES = [ # Definiti come stringhe URL semplici
             "openid", 
             "[https://www.googleapis.com/auth/userinfo.email](https://www.googleapis.com/auth/userinfo.email)",
             "[https://www.googleapis.com/auth/userinfo.profile](https://www.googleapis.com/auth/userinfo.profile)",
@@ -566,25 +561,53 @@ with st.sidebar:
             "[https://www.googleapis.com/auth/bigquery.readonly](https://www.googleapis.com/auth/bigquery.readonly)"
         ]
         
+        # Determina REDIRECT_URI
+        # Per Streamlit Cloud, l'URL base dell'app è l'URI di reindirizzamento.
+        # Per lo sviluppo locale, è http://localhost:8501/ (o la porta che usi).
+        # È FONDAMENTALE che questo URI sia registrato nella GCP Console per il tuo Client ID OAuth.
+        
+        # Tentativo di determinare l'URL base dell'app Streamlit
+        # NOTA: Questo approccio potrebbe non essere sempre affidabile al 100% in tutti gli ambienti di deploy.
+        # Se hai problemi, potresti dover impostare REDIRECT_URI manualmente o tramite una variabile d'ambiente.
         try:
-            from streamlit.web.server.server import Server
-            session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
-            if session_info and hasattr(session_info, 'ws_base_url'):
-                http_protocol = "https" if session_info.ws_base_url.startswith("wss:") else "http"
-                host_port_path = session_info.ws_base_url.split("://")[1].split("/stream")[0]
-                REDIRECT_URI = f"{http_protocol}://{host_port_path}/"
-            else: 
-                REDIRECT_URI = "http://localhost:8501/" 
-        except Exception:
-             REDIRECT_URI = "http://localhost:8501/" 
+            # Questo è un modo per tentare di ottenere l'URL base, ma potrebbe non essere futuro-compatibile.
+            # from streamlit.web.server.server import Server
+            # session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
+            # server_address = session_info.server_address
+            # server_port = session_info.server_port
+            # if server_address == "localhost" or server_address == "127.0.0.1":
+            #     REDIRECT_URI = f"http://{server_address}:{server_port}/"
+            # else: # Presumibilmente un indirizzo pubblico per Streamlit Cloud o simile
+            #     REDIRECT_URI = f"https://{server_address}/" # Assumendo HTTPS per deploy pubblici
+            # Per Streamlit Cloud, l'URL base è l'URL pubblico dell'app.
+            # Per localhost, è http://localhost:8501 (o altra porta)
+            # Questo è un punto delicato. Un modo più semplice è chiedere all'utente di configurarlo o dedurlo.
+            # Per ora, usiamo un approccio che dovrebbe funzionare per localhost e per Streamlit Cloud se l'URL base è l'host.
+            # Se si usa `st.query_params`, l'URL corrente è la base del redirect.
+            # Per semplicità e robustezza, impostiamo due opzioni comuni:
+            if "STREAMLIT_SERVER_ADDRESS" in os.environ and os.environ["STREAMLIT_SERVER_ADDRESS"]: # Heuristica per Streamlit Cloud
+                 app_url_base = os.environ["STREAMLIT_SERVER_ADDRESS"]
+                 if not app_url_base.startswith("http"):
+                     app_url_base = "https://" + app_url_base # Assumi HTTPS
+                 REDIRECT_URI = app_url_base.strip("/") + "/"
+                 print(f"DEBUG: Using STREAMLIT_SERVER_ADDRESS for REDIRECT_URI: {REDIRECT_URI}")
+            else: # Sviluppo locale
+                 REDIRECT_URI = "http://localhost:8501/"
+                 print(f"DEBUG: Using localhost for REDIRECT_URI: {REDIRECT_URI}")
+
+        except Exception as e_uri:
+             REDIRECT_URI = "http://localhost:8501/" # Fallback robusto
+             print(f"DEBUG: Eccezione nel determinare REDIRECT_URI, fallback a localhost: {e_uri}")
         st.caption(f"DEBUG: OAuth Redirect URI: {REDIRECT_URI}")
 
+
+        # Consenti HTTP per OAuth durante lo sviluppo locale (necessario per google-auth-oauthlib)
         if REDIRECT_URI.startswith("http://localhost"):
             os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-        else: 
+        else: # Per produzione, assicurati che sia HTTPS e rimuovi la variabile se presente
             if 'OAUTHLIB_INSECURE_TRANSPORT' in os.environ:
                 del os.environ['OAUTHLIB_INSECURE_TRANSPORT']
-
+        
         if not OAUTH_CLIENT_ID or not OAUTH_CLIENT_SECRET:
              st.error("🤖💬 Client ID o Client Secret OAuth non configurati nei secrets dell'app.")
         elif 'oauth_credentials' not in st.session_state or st.session_state.oauth_credentials is None:
@@ -592,10 +615,10 @@ with st.sidebar:
                 "web": {
                     "client_id": OAUTH_CLIENT_ID,
                     "client_secret": OAUTH_CLIENT_SECRET,
-                    "auth_uri": AUTHORIZE_ENDPOINT,
-                    "token_uri": TOKEN_ENDPOINT,
+                    "auth_uri": "[https://accounts.google.com/o/oauth2/auth](https://accounts.google.com/o/oauth2/auth)",
+                    "token_uri": "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)",
                     "auth_provider_x509_cert_url": "[https://www.googleapis.com/oauth2/v1/certs](https://www.googleapis.com/oauth2/v1/certs)",
-                    "redirect_uris": [REDIRECT_URI] 
+                    "redirect_uris": [REDIRECT_URI] # Deve essere una lista
                 }
             }
             try:
@@ -614,9 +637,11 @@ with st.sidebar:
 
                 if auth_code and retrieved_state_param == st.session_state.get('oauth_flow_state'):
                     try:
+                        print(f"DEBUG: Tentativo di fetch_token con codice: {auth_code} e redirect_uri: {flow.redirect_uri}")
                         flow.fetch_token(code=auth_code)
-                        credentials = flow.credentials
+                        credentials = flow.credentials # google.oauth2.credentials.Credentials object
                         
+                        # Salva le informazioni delle credenziali in un formato serializzabile
                         st.session_state.oauth_credentials = {
                             "token": credentials.token,
                             "refresh_token": credentials.refresh_token,
@@ -626,7 +651,7 @@ with st.sidebar:
                             "scopes": credentials.scopes,
                             "quota_project_id": credentials.quota_project_id 
                         }
-                        st.session_state.credentials_successfully_loaded_by_app = True
+                        st.session_state.credentials_successfully_loaded_by_app = True # Flag generico
                         
                         if credentials and credentials.id_token:
                             try:
@@ -639,30 +664,27 @@ with st.sidebar:
                                 st.session_state.user_email = "Email non disponibile"
                         
                         st.session_state.oauth_flow_state = None 
-                        st.query_params.clear()
+                        st.query_params.clear() # Rimuove i parametri dall'URL per evitare riprocessamento
                         st.rerun()
                     except Exception as e:
                         st.error(f"🤖💬 Errore durante lo scambio del token OAuth: {e}")
                         st.session_state.oauth_flow_state = None
-                else:
-                    if not st.session_state.get('oauth_flow_auth_url_generated_this_run', False):
+                else: # Se non c'è codice o lo stato non corrisponde, mostra il link di login
+                    try:
                         auth_url, state = flow.authorization_url(
-                            access_type='offline', 
-                            prompt='consent' 
+                            access_type='offline', # Per ottenere un refresh_token
+                            prompt='consent' # Forza la schermata di consenso
                         )
                         st.session_state.oauth_flow_auth_url = auth_url
-                        st.session_state.oauth_flow_state = state 
-                        st.session_state.oauth_flow_auth_url_generated_this_run = True # Flag per evitare rigenerazione URL
-                    
-                    if st.session_state.oauth_flow_auth_url:
-                        # Usa st.link_button per un aspetto più nativo
-                        st.link_button("Accedi con Google", st.session_state.oauth_flow_auth_url, use_container_width=True)
-                        st.info("🤖💬 Clicca il link sopra per accedere con Google.")
-                    else:
-                        st.error("Impossibile generare l'URL di autorizzazione OAuth.")
-            else: # Se flow è None
+                        st.session_state.oauth_flow_state = state
+                        
+                        # Usa st.link_button per un aspetto più nativo e una gestione migliore dei link
+                        st.link_button("Accedi con Google", auth_url, use_container_width=True)
+                        st.info("🤖💬 Clicca il pulsante sopra per accedere con Google.")
+                    except Exception as e_auth_url:
+                        st.error(f"Impossibile generare l'URL di autorizzazione OAuth: {e_auth_url}")
+            else:
                 st.error("Impossibile inizializzare il flusso di autenticazione OAuth.")
-
         
         if st.session_state.get('oauth_credentials'):
             user_email_display = st.session_state.get('user_email', 'Utente Autenticato')
@@ -860,7 +882,7 @@ if question_to_process:
                 elif st.session_state.query_results.empty or st.session_state.results_summary == "Non ci sono dati da riassumere.": 
                      st.info("🤖💬 La query non ha restituito risultati da riassumere o non ci sono dati.")
                 else: 
-                    st.warning("�💬 Non è stato possibile generare un riassunto, ma la query ha prodotto risultati (vedi dettagli tecnici).")
+                    st.warning("🤖💬 Non è stato possibile generare un riassunto, ma la query ha prodotto risultati (vedi dettagli tecnici).")
 
                 # --- SEZIONE GENERAZIONE GRAFICO ---
                 if st.session_state.get('enable_chart_generation', False) and \
@@ -931,7 +953,7 @@ with right_footer_col:
 
 if st.session_state.get('show_privacy_policy', False):
     st.subheader("Informativa sulla Privacy per ChatGSC")
-    privacy_container = st.container()
+    privacy_container = st.container() # Usiamo un container per la policy
     with privacy_container: 
         privacy_html = PRIVACY_POLICY_TEXT.replace('**', '<b>').replace('\n', '<br>')
         if privacy_html.endswith('<br>'):
@@ -939,4 +961,4 @@ if st.session_state.get('show_privacy_policy', False):
         st.markdown(f"<div style='height: 400px; overflow-y: auto; border: 1px solid #ccc; padding:10px;'>{privacy_html}</div>", unsafe_allow_html=True)
     if st.button("Chiudi Informativa", key="close_privacy_policy_main_area"):
         st.session_state.show_privacy_policy = False
-        st.rerun()
+        st.rerun() 
