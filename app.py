@@ -11,7 +11,8 @@ import atexit
 import matplotlib.pyplot as plt 
 from google.oauth2.credentials import Credentials 
 import google.auth 
-from google_auth_oauthlib.flow import Flow # Usato per il flusso OAuth ufficiale
+from google_auth_oauthlib.flow import Flow # Import CORRETTO per OAuth ufficiale Google
+import webbrowser # Può essere utile per aprire l'URL di autorizzazione, anche se st.link_button è preferibile
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
@@ -30,7 +31,7 @@ st.markdown("""
 # --- Inizio Setup Credenziali GCP ---
 _temp_gcp_creds_file_path = None
 
-# OAuth Client ID (impostato staticamente come da richiesta)
+# OAuth Client ID (impostato staticamente come da JSON fornito dall'utente)
 # Il CLIENT_SECRET DEVE rimanere in st.secrets
 OAUTH_CLIENT_ID_STATIC = "266022298110-avmhjfgbpsfhbc9m6b5onv3ift7rsdfq.apps.googleusercontent.com"
 
@@ -591,35 +592,32 @@ with st.sidebar:
         # Controlla se l'app è in esecuzione su Streamlit Cloud
         # STREAMLIT_SERVER_ADDRESS è una variabile d'ambiente che può essere usata
         # per identificare l'URL pubblico quando deployato.
-        server_address_env = os.environ.get("STREAMLIT_SERVER_ADDRESS")
-        streamlit_app_url_env = os.environ.get("STREAMLIT_APP_URL") # Altra possibile variabile
+        
+        # Determina REDIRECT_URI in modo più robusto
+        # Se l'app è deployata su Streamlit Cloud, l'URL sarà simile a https://<app-name>.streamlit.app/
+        # Altrimenti, per lo sviluppo locale, sarà http://localhost:8501/
+        
+        # URL specifico per il deploy su Streamlit Cloud
+        APP_DEPLOY_URL = "[https://chatgsc.streamlit.app/](https://chatgsc.streamlit.app/)" 
+        LOCALHOST_URL = "http://localhost:8501/"
 
-        if streamlit_app_url_env: # Priorità a questa se definita
-            REDIRECT_URI = streamlit_app_url_env.strip("/") + "/"
-            print(f"DEBUG: Using STREAMLIT_APP_URL for REDIRECT_URI: {REDIRECT_URI}")
-        elif server_address_env: 
-            if not server_address_env.startswith("http"):
-                app_url_base = "https://" + server_address_env
-            else:
-                app_url_base = server_address_env
-            REDIRECT_URI = app_url_base.strip("/") + "/" 
-            print(f"DEBUG: Using STREAMLIT_SERVER_ADDRESS for REDIRECT_URI: {REDIRECT_URI}")
-        else: # Sviluppo locale o ambiente non Streamlit Cloud standard
-            try:
-                # Tenta di ottenere l'URL base da Streamlit Server (può essere instabile)
-                from streamlit.web.server.server import Server
-                session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
-                if session_info and hasattr(session_info, 'ws_base_url'):
-                    http_protocol = "https" if session_info.ws_base_url.startswith("wss:") else "http"
-                    host_port_path = session_info.ws_base_url.split("://")[1].split("/stream")[0]
-                    REDIRECT_URI = f"{http_protocol}://{host_port_path}/"
-                    print(f"DEBUG: Using Streamlit Server info for REDIRECT_URI: {REDIRECT_URI}")
-                else: 
-                    REDIRECT_URI = "http://localhost:8501/" # Fallback per locale
-                    print(f"DEBUG: Fallback to localhost (1) for REDIRECT_URI: {REDIRECT_URI}")
-            except Exception:
-                 REDIRECT_URI = "http://localhost:8501/" # Fallback robusto
-                 print(f"DEBUG: Fallback to localhost (2) for REDIRECT_URI: {REDIRECT_URI}")
+        # Tenta di rilevare l'ambiente di Streamlit Cloud
+        # Questo è un approccio euristico. Una variabile d'ambiente impostata da Streamlit Cloud sarebbe più affidabile.
+        # Ad esempio, Streamlit Cloud imposta STREAMLIT_SERVER_ADDRESS
+        server_address_env = os.environ.get("STREAMLIT_SERVER_ADDRESS")
+        
+        if server_address_env and "streamlit.app" in server_address_env:
+            # Assumiamo che se STREAMLIT_SERVER_ADDRESS contiene streamlit.app, siamo su Streamlit Cloud.
+            # Costruisci l'URL base.
+            # L'URL dell'app è tipicamente https://<subdomain>.streamlit.app/
+            # Potrebbe essere necessario estrarre il sottodominio o usare un URL fisso se noto.
+            # Per questa app specifica:
+            REDIRECT_URI = APP_DEPLOY_URL
+            print(f"DEBUG: Using Streamlit Cloud REDIRECT_URI: {REDIRECT_URI}")
+        else: # Sviluppo locale o altro ambiente
+            REDIRECT_URI = LOCALHOST_URL
+            print(f"DEBUG: Using localhost REDIRECT_URI: {REDIRECT_URI}")
+        
         st.caption(f"DEBUG: OAuth Redirect URI in uso: {REDIRECT_URI}")
 
 
@@ -638,7 +636,7 @@ with st.sidebar:
             client_config_dict = {
                 "web": {
                     "client_id": OAUTH_CLIENT_ID_STATIC,
-                    "project_id": st.session_state.get('gcp_project_id_input') or "nlp-project-448915", 
+                    "project_id": st.session_state.get('gcp_project_id_input') or "nlp-project-448915", # Usa il project_id inserito o un default
                     "auth_uri": AUTHORIZE_ENDPOINT,
                     "token_uri": TOKEN_ENDPOINT,
                     "auth_provider_x509_cert_url": "[https://www.googleapis.com/oauth2/v1/certs](https://www.googleapis.com/oauth2/v1/certs)",
@@ -679,8 +677,13 @@ with st.sidebar:
                         
                         if credentials and credentials.id_token:
                             try:
+                                # Per ottenere l'email, potremmo usare il token ID
+                                # Richiede google-auth per verify_oauth2_token
+                                import google.oauth2.id_token
+                                import google.auth.transport.requests
+                                request = google.auth.transport.requests.Request()
                                 id_info = google.oauth2.id_token.verify_oauth2_token(
-                                    credentials.id_token, google.auth.transport.requests.Request(), OAUTH_CLIENT_ID_STATIC
+                                    credentials.id_token, request, OAUTH_CLIENT_ID_STATIC
                                 )
                                 st.session_state.user_email = id_info.get('email')
                             except Exception as e_id:
@@ -702,6 +705,7 @@ with st.sidebar:
                         st.session_state.oauth_flow_auth_url = auth_url
                         st.session_state.oauth_flow_state = state
                         
+                        # Usa st.link_button per un aspetto più nativo e una gestione migliore dei link
                         st.link_button("Accedi con Google", auth_url, use_container_width=True)
                         st.info("🤖💬 Clicca il pulsante sopra per accedere con Google.")
                     except Exception as e_auth_url:
@@ -772,7 +776,7 @@ with st.sidebar:
             st.error("🤖💬 ID Progetto Google Cloud è obbligatorio.")
             all_fields_filled = False
         if not gcp_location: st.error("🤖💬 Location Vertex AI è obbligatoria."); all_fields_filled = False
-        if not bq_dataset_id: st.error("�💬 ID Dataset BigQuery è obbligatorio."); all_fields_filled = False
+        if not bq_dataset_id: st.error("🤖💬 ID Dataset BigQuery è obbligatorio."); all_fields_filled = False
         if not bq_table_names_str: st.error("🤖💬 Nomi Tabelle GSC sono obbligatori."); all_fields_filled = False
         
         if all_fields_filled:
@@ -893,7 +897,7 @@ if question_to_process:
                     st.error("Fallimento esecuzione query BigQuery (vedi messaggi di errore sopra).")
             
             if st.session_state.query_results is not None:
-                with st.spinner(f"🤖💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
+                with st.spinner(f"�💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
                     st.session_state.results_summary = summarize_results_with_llm(
                         active_gcp_project_id, active_gcp_location, llm_model_name_to_use, 
                         st.session_state.query_results, question_to_process
@@ -984,4 +988,4 @@ if st.session_state.get('show_privacy_policy', False):
         st.markdown(f"<div style='height: 400px; overflow-y: auto; border: 1px solid #ccc; padding:10px;'>{privacy_html}</div>", unsafe_allow_html=True)
     if st.button("Chiudi Informativa", key="close_privacy_policy_main_area"):
         st.session_state.show_privacy_policy = False
-        st.rerun() 
+        st.rerun()
