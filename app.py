@@ -582,26 +582,24 @@ with st.sidebar:
         if not OAUTH_CLIENT_ID or not OAUTH_CLIENT_SECRET:
              st.error("🤖💬 Client ID o Client Secret OAuth non configurati nei secrets dell'app.")
         else:
-            oauth_component = oauth.OAuth2Component( # Rimosso button_label e button_args
+            oauth_component = oauth.OAuth2Component( 
                 client_id=OAUTH_CLIENT_ID,
                 client_secret=OAUTH_CLIENT_SECRET,
                 authorize_endpoint=AUTHORIZE_ENDPOINT,
                 token_endpoint=TOKEN_ENDPOINT,
                 refresh_token_endpoint=TOKEN_ENDPOINT, 
-                revoke_token_endpoint=REVOKE_ENDPOINT,
-                # I parametri del bottone vanno nel metodo authorize_button
+                revoke_token_endpoint=REVOKE_ENDPOINT
             )
 
             if 'oauth_token' not in st.session_state or st.session_state.oauth_token is None:
-                # Usa il componente per creare il bottone di autorizzazione
                 result = oauth_component.authorize_button(
-                    name="Accedi con Google", # Questo è il testo del bottone
+                    name="Accedi con Google", 
                     icon="[https://www.google.com/favicon.ico](https://www.google.com/favicon.ico)",
                     redirect_uri=REDIRECT_URI,
-                    scope=" ".join(SCOPES), # La libreria si aspetta una stringa separata da spazi
+                    scope=" ".join(SCOPES), 
                     pkce="S256",
-                    use_container_width=True,
-                    type="primary"
+                    use_container_width=True
+                    # Rimosso type="primary"
                 )
                 
                 if result and "token" in result:
