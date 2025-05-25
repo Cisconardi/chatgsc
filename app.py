@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 from google.oauth2.credentials import Credentials 
 import google.auth 
 from google_auth_oauthlib.flow import Flow # Import CORRETTO per OAuth
-# import webbrowser # Non più strettamente necessario con st.link_button
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
@@ -109,68 +108,68 @@ CHART_GENERATION_MODEL = "gemini-2.0-flash-001"
 PRIVACY_POLICY_TEXT = """
 **Informativa sulla Privacy per ChatGSC**
 
-**Ultimo aggiornamento:** 25 Maggio 2025
+**Ultimo aggiornamento:** 23/05/2025
 
-**Nota Importante:** Questa applicazione permette l'autenticazione tramite caricamento di un file JSON di credenziali di un account di servizio Google Cloud oppure, in alternativa, tramite il flusso OAuth 2.0 di Google (se configurato dall'amministratore dell'app). Questa informativa copre entrambi gli scenari.
+**Nota Importante:** Questa applicazione è attualmente in fase di revisione per l'utilizzo dell'autenticazione OAuth 2.0. Per consentire i test e il funzionamento preliminare, l'applicazione utilizza temporaneamente il caricamento di un file JSON di credenziali di un account di servizio Google Cloud. La presente informativa sulla privacy descrive il funzionamento previsto con OAuth 2.0, ma si prega di notare che l'attuale meccanismo di autenticazione è basato su file JSON di account di servizio.
 
-Benvenuto in ChatGSC! La tua privacy è importante per noi. Questa Informativa sulla Privacy spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le tue informazioni quando utilizzi la nostra applicazione ChatGSC per interagire con i tuoi dati di Google Search Console tramite Google BigQuery e Vertex AI.
+Benvenuto in ChatGSC! La tua privacy è importante per noi. Questa Informativa sulla Privacy spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le tue informazioni quando utilizzi la nostra applicazione ChatGSC per interagire con i tuoi dati di Google Search Console tramite Google BigQuery e Vertex AI, utilizzando l'autenticazione OAuth 2.0 di Google (come previsto per la versione finale).
 
-**1. Informazioni che Raccogliamo**
+**1. Informazioni che Raccogliamo (con OAuth 2.0)**
 
-A seconda del metodo di autenticazione utilizzato:
+Quando utilizzi ChatGSC con l'autenticazione OAuth 2.0 (prevista), potremmo raccogliere le seguenti informazioni:
 
-* **Se utilizzi il caricamento del File JSON dell'Account di Servizio:**
-    * **File di Credenziali dell'Account di Servizio Google Cloud:** Per funzionare, l'applicazione richiede di caricare un file JSON contenente le credenziali di un account di servizio Google Cloud. Questo file contiene informazioni sensibili (come chiavi private) che permettono all'applicazione di agire per conto di tale account di servizio per accedere alle risorse Google Cloud (BigQuery e Vertex AI) specificate nel tuo progetto. **Questo file viene elaborato localmente nel browser o temporaneamente sul server durante l'esecuzione dell'app per impostare l'autenticazione, ma non viene memorizzato in modo persistente dall'applicazione ChatGSC stessa oltre la durata della sessione di utilizzo o la necessità di autenticazione.**
-* **Se utilizzi l'autenticazione OAuth 2.0 di Google (se abilitata):**
-    * **Informazioni sull'Account Google:** Quando ti autentichi utilizzando OAuth 2.0, riceviamo informazioni di base dal tuo profilo Google necessarie per stabilire una connessione sicura e per identificarti come utente autorizzato. Questo di solito include il tuo indirizzo email e informazioni di profilo di base. Non memorizziamo la tua password di Google.
-    * **Token di Accesso e Aggiornamento OAuth:** L'applicazione riceverà token da Google per accedere alle API per tuo conto. Questi token sono gestiti in modo sicuro.
+* **Informazioni sull'Account Google:** Quando ti autentichi utilizzando OAuth 2.0, riceviamo informazioni di base dal tuo profilo Google necessarie per stabilire una connessione sicura e per identificarti come utente autorizzato. Questo di solito include il tuo indirizzo email e informazioni di profilo di base. Non memorizziamo la tua password di Google.
+* **Dati di Google Search Console:** Con il tuo esplicito consenso tramite il flusso OAuth 2.0, l'applicazione accederà ai dati del tuo Google Search Console archiviati nel tuo progetto Google BigQuery. Questi dati includono metriche di performance del sito web come query di ricerca, clic, impressioni, CTR, posizione media, URL delle pagine, ecc. L'applicazione legge questi dati solo per rispondere alle tue domande.
+* **Dati di Utilizzo dell'Applicazione (Opzionale):** Potremmo raccogliere informazioni anonime su come utilizzi ChatGSC (es. tipi di domande poste, funzionalità utilizzate) per migliorare l'applicazione. Questi dati sono aggregati e non identificabili personalmente.
+* **Interazioni con l'AI:** Le domande che poni all'AI e le risposte generate vengono processate tramite i servizi di Vertex AI.
 
-Indipendentemente dal metodo di autenticazione:
-* **Dati di Google Search Console:** Con la tua autorizzazione (tramite le credenziali dell'account di servizio o il consenso OAuth 2.0), l'applicazione accederà ai dati del tuo Google Search Console archiviati nel tuo progetto Google BigQuery. Questi dati includono metriche di performance del sito web come query di ricerca, clic, impressioni, CTR, posizione media, URL delle pagine, ecc. L'applicazione legge questi dati solo per rispondere alle tue domande.
-* **Interazioni con l'AI:** Le domande che poni all'AI e le risposte generate vengono processate tramite i servizi di Google Cloud Vertex AI.
+**Funzionamento Attuale con File JSON di Account di Servizio:**
+Attualmente, per utilizzare l'app, carichi un file JSON di un account di servizio. Questo file permette all'applicazione di accedere a Google BigQuery e Vertex AI per tuo conto. Il file viene usato per creare una sessione autenticata e non viene memorizzato permanentemente dall'applicazione oltre la sessione di utilizzo.
 
 **2. Come Utilizziamo le Tue Informazioni**
 
 Utilizziamo le informazioni raccolte per:
 
-* **Fornire e Personalizzare il Servizio:** Per autenticarti, permetterti di interagire con i tuoi dati di Google Search Console, generare query SQL ed elaborare risposte tramite Vertex AI.
-* **Funzionamento dell'Applicazione:** Le credenziali (file JSON o token OAuth) sono usate esclusivamente per consentire all'applicazione di effettuare chiamate API autenticate a Google BigQuery e Vertex AI per tuo conto.
+* **Fornire e Personalizzare il Servizio:** Per autenticarti (tramite file JSON nella versione attuale, tramite OAuth 2.0 in futuro), permetterti di interagire con i tuoi dati di Google Search Console, generare query SQL ed elaborare risposte tramite Vertex AI.
+* **Migliorare l'Applicazione:** Per analizzare l'utilizzo e migliorare le funzionalità e l'esperienza utente di ChatGSC.
+* **Comunicazioni (se applicabile):** Per inviarti aggiornamenti importanti sull'applicazione o rispondere a tue richieste di supporto.
 
 **3. Condivisione e Divulgazione delle Informazioni**
 
-Non vendiamo né affittiamo le tue informazioni personali a terzi.
+Non vendiamo né affittiamo le tue informazioni personali a terzi. Potremmo condividere le tue informazioni solo nelle seguenti circostanze:
 
-* **Con i Servizi Google Cloud Platform:** Le tue domande e i dati di Search Console vengono processati tramite Google BigQuery e Vertex AI come parte integrante del funzionamento dell'applicazione. L'utilizzo di questi servizi è soggetto alle informative sulla privacy e ai termini di servizio di Google Cloud.
-* **File di Credenziali (se usato):** Il file di credenziali JSON caricato viene utilizzato per creare un file temporaneo sul server dove l'app è in esecuzione, al solo scopo di impostare l'autenticazione per le librerie client di Google. Questo file temporaneo viene eliminato al termine della sessione dello script.
-* **Per Requisiti Legali:** Se richiesto dalla legge o in risposta a validi processi legali.
+* **Con i Servizi Google Cloud Platform:** Le tue domande e i dati di Search Console vengono processati tramite Google BigQuery e Vertex AI come parte integrante del funzionamento dell'applicazione. L'utilizzo di questi servizi è soggetto alle informative sulla privacy di Google Cloud.
+* **Per Requisiti Legali:** Se richiesto dalla legge o in risposta a validi processi legali (es. un'ordinanza del tribunale).
+* **Con il Tuo Consenso:** Per qualsiasi altra finalità, solo con il tuo esplicito consenso.
 
 **4. Sicurezza dei Dati**
 
-* **File JSON Account di Servizio (se usato):** È tua responsabilità gestire la sicurezza del file JSON del tuo account di servizio prima di caricarlo.
-* **OAuth 2.0 (se usato):** L'accesso ai tuoi dati avviene tramite il protocollo sicuro OAuth 2.0.
-* Adottiamo misure ragionevoli per proteggere le tue informazioni. Tuttavia, nessuna trasmissione via Internet o metodo di archiviazione elettronica è sicuro al 100%.
+* **File JSON Account di Servizio (attuale):** È tua responsabilità gestire la sicurezza del file JSON del tuo account di servizio prima di caricarlo. L'applicazione utilizza il file per l'autenticazione durante la sessione. Ti consigliamo di utilizzare account di servizio con i permessi minimi necessari.
+* **OAuth 2.0 (previsto):** Adottiamo misure ragionevoli per proteggere le tue informazioni da accessi non autorizzati, alterazione, divulgazione o distruzione. L'accesso ai tuoi dati di Google Search Console avverrà tramite il protocollo sicuro OAuth 2.0 e i token di accesso saranno gestiti in modo sicuro. Tuttavia, nessuna trasmissione via Internet o metodo di archiviazione elettronica è sicuro al 100%.
 
 **5. Conservazione dei Dati**
 
-* **File di Credenziali Caricato (se usato):** Utilizzato temporaneamente per la sessione e poi eliminato.
-* **Token OAuth (se usato):** Conservati solo per la durata necessaria a mantenere attiva la tua sessione o come consentito da Google.
+* **File JSON Account di Servizio (attuale):** Il contenuto del file di credenziali viene utilizzato per creare un file temporaneo che persiste solo per la durata dell'esecuzione dello script dell'applicazione. Viene fatto un tentativo di eliminare questo file temporaneo alla chiusura dello script.
+* **Token OAuth (previsto):** Conserviamo i token di accesso OAuth solo per la durata necessaria a mantenere attiva la tua sessione o come consentito da Google.
 * **Dati di Search Console:** Non archiviamo copie permanenti dei tuoi dati di Google Search Console. I dati vengono letti da BigQuery "on-demand".
+* **Cronologia delle Query (se implementata):** Se l'applicazione implementa una cronologia delle query, questa verrà conservata solo per la tua comodità e potrai avere la possibilità di cancellarla.
 
-**6. I Tuoi Diritti e Responsabilità**
+**6. I Tuoi Diritti**
 
-* Hai il controllo sul file JSON del tuo account di servizio e sui permessi IAM ad esso associati (se usi questo metodo).
-* Se usi OAuth 2.0, puoi revocare l'accesso dell'applicazione ai tuoi dati Google tramite le impostazioni di sicurezza del tuo Account Google.
+* **File JSON Account di Servizio (attuale):** Hai il controllo sul file JSON del tuo account di servizio e sui permessi IAM ad esso associati.
+* **OAuth 2.0 (previsto):** In base alla tua giurisdizione, potresti avere determinati diritti riguardo alle tue informazioni personali, come il diritto di accedere, correggere o richiedere la cancellazione dei tuoi dati. Puoi revocare in qualsiasi momento l'accesso dell'applicazione ai tuoi dati Google tramite le impostazioni di sicurezza del tuo Account Google.
 
 **7. Modifiche a Questa Informativa sulla Privacy**
 
-Potremmo aggiornare questa Informativa sulla Privacy. Ti informeremo pubblicando la nuova Informativa sull'applicazione.
+Potremmo aggiornare questa Informativa sulla Privacy di tanto in tanto. Ti informeremo di eventuali modifiche pubblicando la nuova Informativa sulla Privacy sull'applicazione. Ti consigliamo di rivedere periodicamente questa Informativa sulla Privacy per eventuali modifiche.
 
 **8. Contattaci**
 
-Se hai domande, contattaci a: info@francisconardi o su LinkedIn
+Se hai domande su questa Informativa sulla Privacy, contattaci a:
+info@francisconardi o su LinkedIn
 
 ---
-*Nota Importante: Questa è una bozza generica. Adattala alle funzionalità specifiche della tua app e assicurati che sia conforme alle leggi sulla privacy applicabili.*
+*Nota Importante: Questa è una bozza generica. Dovrai adattarla specificamente alle funzionalità della tua app e assicurarti che sia conforme alle leggi sulla privacy come il GDPR (se applicabile).*
 """
 
 # --- Funzioni Core ---
@@ -481,7 +480,7 @@ def initialize_session_state():
         'enable_chart_generation': False,
         'oauth_flow_auth_url': None, 
         'oauth_flow_state': None,
-        'oauth_flow_auth_url_generated_this_run': False # Nuovo stato per gestire la generazione dell'URL
+        'oauth_flow_auth_url_generated_this_run': False
     }
     for key, value in default_session_state.items():
         if key not in st.session_state:
@@ -493,7 +492,7 @@ initialize_session_state()
 def on_config_change():
     st.session_state.config_applied_successfully = False
     st.session_state.current_schema_config_key = "" 
-    st.session_state.oauth_flow_auth_url_generated_this_run = False # Resetta anche questo
+    st.session_state.oauth_flow_auth_url_generated_this_run = False 
     print("DEBUG: Configurazione cambiata, config_applied_successfully resettato.")
 
 def on_auth_method_change():
@@ -558,7 +557,6 @@ with st.sidebar:
         # Definizioni degli endpoint e degli scope come stringhe URL semplici e corrette
         AUTHORIZE_ENDPOINT = "[https://accounts.google.com/o/oauth2/v2/auth](https://accounts.google.com/o/oauth2/v2/auth)"
         TOKEN_ENDPOINT = "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)"
-        # REVOKE_ENDPOINT = "[https://oauth2.googleapis.com/revoke](https://oauth2.googleapis.com/revoke)" # Non usato attivamente
         
         SCOPES = [
             "openid", 
@@ -569,68 +567,35 @@ with st.sidebar:
         ]
         
         # Determina REDIRECT_URI
-        try:
-            # Tenta di ottenere l'URL base dell'app Streamlit
-            # Questo è un approccio euristico e potrebbe necessitare di aggiustamenti
-            # a seconda dell'ambiente di deploy.
-            # In Streamlit Cloud, l'URL base è tipicamente l'URL pubblico dell'app.
-            # Per lo sviluppo locale, è http://localhost:PORTA/.
-            # È cruciale che questo URI sia registrato nella GCP Console per il tuo Client ID OAuth.
-            if "streamlit_sharing. แชร์ผ่าน Streamlit" in st.เวอร์ชัน: # Heuristic per Streamlit Cloud
-                # In Streamlit Cloud, l'URL base è l'URL pubblico dell'app.
-                # Ottenere questo programmaticamente in modo robusto può essere difficile.
-                # Per ora, assumiamo che l'utente lo configuri correttamente in GCP.
-                # Potremmo provare a dedurlo, ma è rischioso.
-                # Per il deploy su chatgsc.streamlit.app, l'URI di redirect è [https://chatgsc.streamlit.app/](https://chatgsc.streamlit.app/)
-                # Questo deve essere configurato manualmente in GCP Console.
-                # Se l'app ha un nome diverso, l'URL cambierà.
-                # Una soluzione più robusta sarebbe leggere l'URL base da una variabile d'ambiente se disponibile.
-                
-                # Tentativo di dedurre l'URL base se deployato
-                # Questo è un HACK e potrebbe non funzionare sempre o essere sicuro.
-                # È meglio se Streamlit fornisce un modo ufficiale per ottenere l'URL base.
-                # Per ora, ci affidiamo al fatto che l'utente configuri l'URI corretto in GCP.
-                # Se l'app è su [https://chatgsc.streamlit.app/](https://chatgsc.streamlit.app/), allora REDIRECT_URI = "[https://chatgsc.streamlit.app/](https://chatgsc.streamlit.app/)"
-                # Questo deve essere verificato e configurato manualmente in GCP.
-                # Per lo sviluppo locale, usiamo localhost.
-                
-                # Tentativo di usare l'header Host se disponibile (funziona in alcuni ambienti)
-                # Questo è un tentativo, potrebbe non essere disponibile o sicuro.
-                # headers = st.experimental_get_query_params() # Deprecato
-                # request_headers = st.experimental_get_request_headers() # Potrebbe non essere disponibile o sicuro
-                # host = request_headers.get("Host") if request_headers else None
-
-                # Logica più sicura per REDIRECT_URI
-                if os.environ.get("STREAMLIT_SERVER_ADDRESS"): # Spesso impostato in Streamlit Cloud
-                    app_url_base = os.environ["STREAMLIT_SERVER_ADDRESS"]
-                    if not app_url_base.startswith("http"):
-                        app_url_base = "https://" + app_url_base # Assumi HTTPS per Streamlit Cloud
-                    REDIRECT_URI = app_url_base.strip("/") + "/"
-                else: # Fallback per locale o se la var d'ambiente non è impostata
-                    try:
-                        # Tenta di ottenere l'URL base da Streamlit Server (può essere instabile)
-                        from streamlit.web.server.server import Server
-                        session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
-                        if session_info and hasattr(session_info, 'ws_base_url'):
-                            http_protocol = "https" if session_info.ws_base_url.startswith("wss:") else "http"
-                            host_port_path = session_info.ws_base_url.split("://")[1].split("/stream")[0]
-                            REDIRECT_URI = f"{http_protocol}://{host_port_path}/"
-                        else: 
-                            REDIRECT_URI = "http://localhost:8501/" # Fallback per locale
-                    except Exception:
-                         REDIRECT_URI = "http://localhost:8501/" # Fallback robusto
-            else: # Sviluppo locale
-                 REDIRECT_URI = "http://localhost:8501/"
-        except Exception as e_uri:
-             REDIRECT_URI = "http://localhost:8501/" # Fallback robusto
-             print(f"DEBUG: Eccezione nel determinare REDIRECT_URI, fallback a localhost: {e_uri}")
+        # Per Streamlit Cloud, l'URL base dell'app è l'URI di reindirizzamento.
+        # Per lo sviluppo locale, è http://localhost:8501/ (o la porta che usi).
+        # È FONDAMENTALE che questo URI sia registrato nella GCP Console per il tuo Client ID OAuth.
+        server_address = os.environ.get("STREAMLIT_SERVER_ADDRESS")
+        if server_address: # Probabilmente Streamlit Cloud o un ambiente deployato
+            if not server_address.startswith("http"):
+                app_url_base = "https://" + server_address # Assumi HTTPS per Streamlit Cloud
+            else:
+                app_url_base = server_address
+            REDIRECT_URI = app_url_base.strip("/") + "/"
+        else: # Sviluppo locale
+            try:
+                from streamlit.web.server.server import Server
+                session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
+                if session_info and hasattr(session_info, 'ws_base_url'):
+                    http_protocol = "https" if session_info.ws_base_url.startswith("wss:") else "http"
+                    host_port_path = session_info.ws_base_url.split("://")[1].split("/stream")[0]
+                    REDIRECT_URI = f"{http_protocol}://{host_port_path}/"
+                else: 
+                    REDIRECT_URI = "http://localhost:8501/" 
+            except Exception:
+                 REDIRECT_URI = "http://localhost:8501/" 
         st.caption(f"DEBUG: OAuth Redirect URI: {REDIRECT_URI}")
 
 
         # Consenti HTTP per OAuth durante lo sviluppo locale (necessario per google-auth-oauthlib)
         if REDIRECT_URI.startswith("http://localhost"):
             os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-        else: # Per produzione, assicurati che sia HTTPS e rimuovi la variabile se presente
+        else: 
             if 'OAUTHLIB_INSECURE_TRANSPORT' in os.environ:
                 del os.environ['OAUTHLIB_INSECURE_TRANSPORT']
         
@@ -641,10 +606,10 @@ with st.sidebar:
                 "web": {
                     "client_id": OAUTH_CLIENT_ID,
                     "client_secret": OAUTH_CLIENT_SECRET,
-                    "auth_uri": AUTHORIZE_ENDPOINT, # URL semplice
-                    "token_uri": TOKEN_ENDPOINT,     # URL semplice
-                    "auth_provider_x509_cert_url": "[https://www.googleapis.com/oauth2/v1/certs](https://www.googleapis.com/oauth2/v1/certs)", # URL semplice
-                    "redirect_uris": [REDIRECT_URI] # Deve essere una lista
+                    "auth_uri": AUTHORIZE_ENDPOINT,
+                    "token_uri": TOKEN_ENDPOINT,
+                    "auth_provider_x509_cert_url": "[https://www.googleapis.com/oauth2/v1/certs](https://www.googleapis.com/oauth2/v1/certs)",
+                    "redirect_uris": [REDIRECT_URI] 
                 }
             }
             try:
@@ -773,7 +738,7 @@ with st.sidebar:
             st.error("🤖💬 ID Progetto Google Cloud è obbligatorio.")
             all_fields_filled = False
         if not gcp_location: st.error("🤖💬 Location Vertex AI è obbligatoria."); all_fields_filled = False
-        if not bq_dataset_id: st.error("🤖💬 ID Dataset BigQuery è obbligatorio."); all_fields_filled = False
+        if not bq_dataset_id: st.error("�💬 ID Dataset BigQuery è obbligatorio."); all_fields_filled = False
         if not bq_table_names_str: st.error("🤖💬 Nomi Tabelle GSC sono obbligatori."); all_fields_filled = False
         
         if all_fields_filled:
