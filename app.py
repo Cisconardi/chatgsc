@@ -56,11 +56,11 @@ def reset_all_auth_states():
         'credentials_successfully_loaded_by_app', 'uploaded_project_id', 
         'last_uploaded_file_id_processed_successfully', 'config_applied_successfully',
         'table_schema_for_prompt', 'current_schema_config_key', 
-        'oauth_credentials', # Modificato da 'oauth_token' per coerenza con google.oauth2.credentials
-        'user_email', # Per email utente da OAuth
+        'oauth_credentials', 
+        'user_email', 
         'auth_method',
-        'oauth_flow_auth_url', # Per l'URL di autorizzazione
-        'oauth_flow_state' # Per lo stato OAuth
+        'oauth_flow_auth_url', 
+        'oauth_flow_state' 
     ]
     for key in keys_to_reset:
         if key in st.session_state:
@@ -474,12 +474,12 @@ def initialize_session_state():
         'config_applied_successfully': False, 'show_privacy_policy': False,
         'user_question_from_button': "", 'submit_from_preset_button': False,
         'auth_method': "Carica File JSON Account di Servizio", # Default al metodo JSON
-        'oauth_credentials': None, # Modificato da 'oauth_token'
-        'user_email': None, # Per email utente da OAuth
+        'oauth_credentials': None, 
+        'user_email': None, 
         'gcp_project_id_input': "example-project-id",
         'enable_chart_generation': False,
-        'oauth_flow_auth_url': None, # Per l'URL di autorizzazione
-        'oauth_flow_state': None # Per lo stato OAuth
+        'oauth_flow_auth_url': None, 
+        'oauth_flow_state': None 
     }
     for key, value in default_session_state.items():
         if key not in st.session_state:
@@ -559,7 +559,6 @@ with st.sidebar:
             "[https://www.googleapis.com/auth/bigquery.readonly](https://www.googleapis.com/auth/bigquery.readonly)"
         ]
         
-        # Determina REDIRECT_URI
         try:
             from streamlit.web.server.server import Server
             session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
@@ -573,21 +572,30 @@ with st.sidebar:
              REDIRECT_URI = "http://localhost:8501/" 
         # st.caption(f"DEBUG: OAuth Redirect URI: {REDIRECT_URI}")
 
+        # Imposta OAUTHLIB_INSECURE_TRANSPORT per lo sviluppo locale con HTTP
+        if REDIRECT_URI.startswith("http://localhost"):
+            os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+            print("DEBUG: OAUTHLIB_INSECURE_TRANSPORT impostato a 1 per sviluppo locale.")
+        else: # Assicurati che non sia impostato per produzione
+            if 'OAUTHLIB_INSECURE_TRANSPORT' in os.environ:
+                del os.environ['OAUTHLIB_INSECURE_TRANSPORT']
+                print("DEBUG: OAUTHLIB_INSECURE_TRANSPORT rimosso.")
+
 
         if not OAUTH_CLIENT_ID or not OAUTH_CLIENT_SECRET:
              st.error("🤖💬 Client ID o Client Secret OAuth non configurati nei secrets dell'app.")
         elif 'oauth_credentials' not in st.session_state or st.session_state.oauth_credentials is None:
-            client_config = {
+            client_config_dict = {
                 "web": {
                     "client_id": OAUTH_CLIENT_ID,
                     "client_secret": OAUTH_CLIENT_SECRET,
-                    "auth_uri": "[https://accounts.google.com/o/oauth2/auth](https://accounts.google.com/o/oauth2/auth)",
-                    "token_uri": "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)",
-                    "auth_provider_x509_cert_url": "[https://www.googleapis.com/oauth2/v1/certs](https://www.googleapis.com/oauth2/v1/certs)",
-                    # "redirect_uris" non è necessario qui, ma nel setup GCP
+                    "auth_uri": "[https://accounts.google.com/o/oauth2/auth](https://accounts.google.com/o/oauth2/auth)", # URL semplice
+                    "token_uri": "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)",     # URL semplice
+                    "auth_provider_x509_cert_url": "[https://www.googleapis.com/oauth2/v1/certs](https://www.googleapis.com/oauth2/v1/certs)", # URL semplice
+                    "redirect_uris": [REDIRECT_URI] # Deve essere una lista in client_config
                 }
             }
-            flow = Flow.from_client_config(client_config, scopes=SCOPES, redirect_uri=REDIRECT_URI)
+            flow = Flow.from_client_config(client_config_dict, scopes=SCOPES, redirect_uri=REDIRECT_URI)
             
             query_params = st.query_params
             auth_code = query_params.get("code")
@@ -596,35 +604,34 @@ with st.sidebar:
             retrieved_state = query_params.get("state")
             if retrieved_state and isinstance(retrieved_state, list): retrieved_state = retrieved_state[0]
 
-
             if auth_code and retrieved_state == st.session_state.get('oauth_flow_state'):
                 try:
                     flow.fetch_token(code=auth_code)
                     credentials = flow.credentials
                     
-                    # Salva le informazioni delle credenziali in un formato serializzabile
                     st.session_state.oauth_credentials = {
                         "token": credentials.token,
                         "refresh_token": credentials.refresh_token,
                         "token_uri": credentials.token_uri,
                         "client_id": credentials.client_id,
-                        "client_secret": credentials.client_secret, # Attenzione: non ideale da salvare, ma necessario per refresh
+                        "client_secret": credentials.client_secret, 
                         "scopes": credentials.scopes
                     }
                     st.session_state.credentials_successfully_loaded_by_app = True
                     
-                    # Ottieni l'email dell'utente
                     if credentials and credentials.id_token:
                         try:
-                            id_info = google.oauth2.id_token.verify_oauth2_token(
-                                credentials.id_token, google.auth.transport.requests.Request(), OAUTH_CLIENT_ID
-                            )
-                            st.session_state.user_email = id_info.get('email')
+                            # Per ottenere l'email, potremmo usare il token ID o chiamare l'API userinfo
+                            # Per semplicità, se l'ID token è disponibile, proviamo a decodificarlo
+                            # (richiederebbe google-auth per verify_oauth2_token)
+                            # Oppure, se lo scope userinfo.email è stato concesso, il token può essere usato per chiamare l'endpoint userinfo
+                            # Per ora, non estraiamo l'email qui per mantenere il flusso più semplice.
+                            # L'utente può vedere che è autenticato.
+                            pass # L'email può essere recuperata in un secondo momento se necessario
                         except Exception as e_id:
-                            print(f"DEBUG: Errore nel verificare id_token: {e_id}")
-                            st.session_state.user_email = "Email non disponibile"
+                            print(f"DEBUG: Errore nel processare id_token: {e_id}")
                     
-                    st.session_state.oauth_flow_state = None # Resetta lo stato dopo l'uso
+                    st.session_state.oauth_flow_state = None 
                     st.query_params.clear()
                     st.rerun()
                 except Exception as e:
@@ -633,7 +640,7 @@ with st.sidebar:
             else:
                 auth_url, state = flow.authorization_url(prompt="consent", access_type="offline")
                 st.session_state.oauth_flow_auth_url = auth_url
-                st.session_state.oauth_flow_state = state # Salva lo stato per la verifica
+                st.session_state.oauth_flow_state = state 
                 
                 st.markdown(f'<a href="{auth_url}" target="_self" class="button">Accedi con Google</a>', unsafe_allow_html=True)
                 st.markdown("""
@@ -642,8 +649,9 @@ with st.sidebar:
                 st.info("🤖💬 Clicca il link sopra per accedere con Google.")
         
         if st.session_state.get('oauth_credentials'):
-            user_display_name = st.session_state.get('user_email', 'Utente Autenticato')
-            st.success(f"🤖💬 Autenticato come: {user_display_name}")
+            user_email_display = "Utente Autenticato" # Placeholder se l'email non è stata recuperata
+            # Potresti aggiungere qui la logica per recuperare l'email usando il token se necessario
+            st.success(f"🤖💬 Autenticato con Google.")
             if st.button("Logout da Google", key="oauth_logout_button"):
                 reset_all_auth_states()
                 st.rerun()
@@ -695,7 +703,7 @@ with st.sidebar:
     if apply_config_button:
         all_fields_filled = True
         auth_successful = (st.session_state.auth_method == "Carica File JSON Account di Servizio" and st.session_state.credentials_successfully_loaded_by_app) or \
-                          (st.session_state.auth_method == "Accedi con Google (OAuth 2.0)" and st.session_state.get('oauth_credentials')) # Modificato da oauth_token
+                          (st.session_state.auth_method == "Accedi con Google (OAuth 2.0)" and st.session_state.get('oauth_credentials'))
         
         if not auth_successful:
             st.error("🤖💬 Per favore, completa l'autenticazione (JSON o OAuth).")
