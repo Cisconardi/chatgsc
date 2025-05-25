@@ -22,7 +22,7 @@ st.markdown("""
 <style>
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] p,
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] li {
-        font-size: 1.25em !important; /* Puoi aggiustare 1.25em a tuo piacimento */
+        font-size: 2em !important; /* Puoi aggiustare 1.25em a tuo piacimento */
     }
 </style>
 """, unsafe_allow_html=True)
@@ -924,4 +924,4 @@ if st.session_state.get('show_privacy_policy', False):
         st.markdown(f"<div style='height: 400px; overflow-y: auto; border: 1px solid #ccc; padding:10px;'>{privacy_html}</div>", unsafe_allow_html=True)
     if st.button("Chiudi Informativa", key="close_privacy_policy_main_area"):
         st.session_state.show_privacy_policy = False
-        st.rerun() 
+        st.rerun()
