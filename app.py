@@ -56,18 +56,18 @@ def reset_all_auth_states():
         'last_uploaded_file_id_processed_successfully', 'config_applied_successfully',
         'table_schema_for_prompt', 'current_schema_config_key', 
         'oauth_flow_initiated', 'user_oauth_credentials', 'oauth_project_id',
-        'auth_method' # Resetta anche il metodo di autenticazione scelto
+        'auth_method' 
     ]
     for key in keys_to_reset:
         if key in st.session_state:
-            del st.session_state[key]
-    print("DEBUG: Tutti gli stati di autenticazione e configurazione resettati.")
+            del st.session_state[key] # Rimuove la chiave per un reset completo
+    # Re-inizializza i valori di default per le chiavi appena rimosse
+    initialize_session_state() 
+    print("DEBUG: Tutti gli stati di autenticazione e configurazione resettati e reinizializzati.")
 
 
 def load_credentials_from_service_account_file(uploaded_file):
     global _temp_gcp_creds_file_path
-    # Chiamare reset_all_auth_states() qui potrebbe essere troppo aggressivo se l'utente cambia solo il file
-    # Ma è più sicuro per garantire uno stato pulito per il nuovo file.
     reset_all_auth_states() 
 
     if uploaded_file is not None:
@@ -91,7 +91,7 @@ def load_credentials_from_service_account_file(uploaded_file):
         except Exception as e:
             st.error(f"🤖💬 Errore durante il caricamento del file delle credenziali: {e}")
         
-        reset_all_auth_states() # Assicura pulizia in caso di errore
+        reset_all_auth_states() 
         return False
     return False
 
@@ -170,57 +170,39 @@ Se hai domande, contattaci a: info@francisconardi o su LinkedIn
 """
 
 # --- Funzioni Core ---
-# (Le funzioni get_table_schema_for_prompt, generate_sql_from_question, ecc. rimangono invariate
-# ma ora dovranno gestire il fatto che le credenziali potrebbero provenire da OAuth invece che da GOOGLE_APPLICATION_CREDENTIALS)
 
-def get_gcp_credentials():
-    """Restituisce le credenziali GCP, sia da OAuth che da account di servizio."""
-    if st.session_state.get('auth_method') == 'oauth' and 'user_oauth_credentials' in st.session_state:
+def get_gcp_credentials_object():
+    """Restituisce un oggetto credenziali GCP valido o None."""
+    if st.session_state.get('auth_method') == 'Accedi con Google (OAuth 2.0)' and 'user_oauth_credentials' in st.session_state:
         creds_info = st.session_state.user_oauth_credentials
-        # Ricostruisci l'oggetto Credentials di google.oauth2.credentials
-        # Questo è un esempio semplificato; la struttura esatta dipende da come salvi i token.
         if creds_info and 'token' in creds_info:
-             return Credentials(
-                token=creds_info['token'],
-                refresh_token=creds_info.get('refresh_token'),
-                token_uri=creds_info.get('token_uri'),
-                client_id=creds_info.get('client_id'),
-                client_secret=creds_info.get('client_secret'),
-                scopes=creds_info.get('scopes')
-            )
-    elif os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-        # Per il metodo dell'account di servizio, le librerie client usano automaticamente questa env var.
-        # Possiamo restituire None o le credenziali di default dell'applicazione se necessario per qualche logica.
-        # Per ora, il fatto che l'env var sia impostata è sufficiente per le chiamate API.
-        credentials, project = google.auth.default()
-        return credentials
-    return None
-
-def get_project_id_from_credentials():
-    """Tenta di ottenere il project_id dalle credenziali caricate (OAuth o SA)."""
-    if st.session_state.get('auth_method') == 'oauth' and 'user_oauth_credentials' in st.session_state:
-        # Per OAuth, il project_id non è direttamente nei token, ma può essere inferito o richiesto.
-        # Per semplicità, potremmo chiedere all'utente di inserirlo o provare a ottenerlo da google.auth.default()
-        # dopo che le credenziali utente sono state usate per una chiamata.
-        # Qui, per ora, lo lasciamo come campo da inserire manualmente o precompilato se l'utente lo ha già inserito.
-        # Potremmo provare a usare google.auth.default() se le credenziali utente sono state impostate globalmente.
+            try:
+                return Credentials(
+                    token=creds_info['token'],
+                    refresh_token=creds_info.get('refresh_token'),
+                    token_uri=creds_info.get('token_uri'), # Necessario per il refresh
+                    client_id=creds_info.get('client_id'), # Necessario per il refresh
+                    client_secret=creds_info.get('client_secret'), # Necessario per il refresh
+                    scopes=creds_info.get('scopes')
+                )
+            except Exception as e:
+                print(f"DEBUG: Errore nella creazione dell'oggetto Credentials da OAuth: {e}")
+                return None
+    elif st.session_state.get('auth_method') == "Carica File JSON Account di Servizio" and os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
         try:
-            _, project_id = google.auth.default(scopes=['https://www.googleapis.com/auth/cloud-platform'])
-            return project_id
-        except Exception:
-            return st.session_state.get('gcp_project_id_input') # Fallback all'input manuale
-            
-    elif st.session_state.get('auth_method') == 'service_account' and 'uploaded_project_id' in st.session_state:
-        return st.session_state.uploaded_project_id
+            credentials, _ = google.auth.load_credentials_from_file(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+            return credentials
+        except Exception as e:
+            print(f"DEBUG: Errore nel caricamento delle credenziali SA da file: {e}")
+            return None
     return None
 
 
 def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_str: str) -> str | None:
-    gcp_creds = get_gcp_credentials()
-    if not gcp_creds and not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
-        st.error("🤖💬 Le credenziali GCP non sono state caricate. Scegli un metodo di autenticazione e completa i passaggi.")
+    gcp_creds_obj = get_gcp_credentials_object()
+    if not gcp_creds_obj: 
+        st.error("🤖💬 Le credenziali GCP non sono state caricate correttamente. Scegli un metodo di autenticazione e completa i passaggi, poi applica la configurazione.")
         return None
-    # ... resto della funzione come prima, ma usa 'gcp_creds' se necessario per il client
     if not project_id or not dataset_id or not table_names_str:
         st.error("🤖💬 ID Progetto, ID Dataset e Nomi Tabelle sono necessari per recuperare lo schema.")
         return None
@@ -229,7 +211,7 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
         st.error("🤖💬 Per favore, fornisci almeno un nome di tabella valido.")
         return None
     try:
-        client = bigquery.Client(project=project_id, credentials=gcp_creds if st.session_state.get('auth_method') == 'oauth' else None) 
+        client = bigquery.Client(project=project_id, credentials=gcp_creds_obj) 
     except Exception as e:
         st.error(f"🤖💬 Impossibile inizializzare il client BigQuery: {e}. Verifica le credenziali e i permessi.")
         return None
@@ -261,16 +243,15 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
     return final_schema_prompt
 
 def generate_sql_from_question(project_id: str, location: str, model_name: str, question: str, table_schema_prompt: str, few_shot_examples_str: str) -> str | None:
-    gcp_creds = get_gcp_credentials()
-    if not gcp_creds and not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
+    gcp_creds_obj = get_gcp_credentials_object()
+    if not gcp_creds_obj: 
         st.error("🤖💬 Le credenziali GCP non sono state caricate. Impossibile procedere con la generazione SQL.")
         return None
-    # ... resto della funzione come prima ...
     if not all([project_id, location, model_name, question, table_schema_prompt]):
         st.error("🤖💬 Mancano alcuni parametri per la generazione SQL (progetto, location, modello, domanda, schema).")
         return None
     try:
-        vertexai.init(project=project_id, location=location, credentials=gcp_creds if st.session_state.get('auth_method') == 'oauth' else None) 
+        vertexai.init(project=project_id, location=location, credentials=gcp_creds_obj) 
         model = GenerativeModel(model_name)
         prompt_parts = [
             "Sei un esperto assistente AI che traduce domande in linguaggio naturale in query SQL per Google BigQuery,",
@@ -314,18 +295,16 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
             st.expander("Ultimo Prompt Inviato (Debug)").code(st.session_state.last_prompt, language='text')
         return None
 
-
 def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | None:
-    gcp_creds = get_gcp_credentials()
-    if not gcp_creds and not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    gcp_creds_obj = get_gcp_credentials_object()
+    if not gcp_creds_obj:
         st.error("Le credenziali GCP non sono state caricate. Impossibile procedere con l'esecuzione della query.")
         return None
-    # ... resto della funzione come prima ...
     if not project_id or not sql_query:
         st.error("🤖💬 ID Progetto e query SQL sono necessari per l'esecuzione su BigQuery.")
         return None
     try:
-        client = bigquery.Client(project=project_id, credentials=gcp_creds if st.session_state.get('auth_method') == 'oauth' else None) 
+        client = bigquery.Client(project=project_id, credentials=gcp_creds_obj) 
         query_job = client.query(sql_query)
         results_df = query_job.to_dataframe() 
         return results_df
@@ -334,18 +313,17 @@ def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | No
         return None
 
 def summarize_results_with_llm(project_id: str, location: str, model_name: str, results_df: pd.DataFrame, original_question: str) -> str | None:
-    gcp_creds = get_gcp_credentials()
-    if not gcp_creds and not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    gcp_creds_obj = get_gcp_credentials_object()
+    if not gcp_creds_obj:
         st.error("🤖💬 Le credenziali GCP non sono state caricate. Impossibile procedere con il riassunto.")
         return None
-    # ... resto della funzione come prima ...
     if results_df.empty:
         return "Non ci sono dati da riassumere." 
     if not all([project_id, location, model_name]):
         st.error("🤖💬 Mancano alcuni parametri per la generazione del riassunto (progetto, location, modello).")
         return None
     try:
-        vertexai.init(project=project_id, location=location, credentials=gcp_creds if st.session_state.get('auth_method') == 'oauth' else None) 
+        vertexai.init(project=project_id, location=location, credentials=gcp_creds_obj) 
         model = GenerativeModel(model_name)
         results_sample_text = results_df.head(20).to_string(index=False)
         if len(results_df) > 20:
@@ -375,16 +353,15 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
         return "Errore nella generazione del riassunto."
 
 def generate_chart_code_with_llm(project_id: str, location: str, model_name: str, original_question:str, sql_query:str, query_results_df: pd.DataFrame) -> str | None:
-    gcp_creds = get_gcp_credentials()
-    if not gcp_creds and not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    gcp_creds_obj = get_gcp_credentials_object()
+    if not gcp_creds_obj:
         st.error("🤖💬 Credenziali GCP non caricate. Impossibile generare codice per il grafico.")
         return None
-    # ... resto della funzione come prima ...
     if query_results_df.empty:
         st.info("🤖💬 Nessun dato disponibile per generare un grafico.")
         return None
     try:
-        vertexai.init(project=project_id, location=location, credentials=gcp_creds if st.session_state.get('auth_method') == 'oauth' else None)
+        vertexai.init(project=project_id, location=location, credentials=gcp_creds_obj)
         model = GenerativeModel(model_name)
         if len(query_results_df) > 10:
             data_sample = query_results_df.sample(min(10, len(query_results_df))).to_string(index=False)
@@ -491,21 +468,25 @@ with st.expander(expander_title_text, expanded=False):
     st.write("---")
     st.write("Una volta configurato tutto, potrai fare domande sui tuoi dati!")
 
+# Inizializza st.session_state
+def initialize_session_state():
+    default_session_state = {
+        'uploaded_project_id': None, 'sql_query': "", 'query_results': None,
+        'results_summary': "", 'table_schema_for_prompt': "", 'last_prompt': "",
+        'current_schema_config_key': "", 'credentials_successfully_loaded_by_app': False,
+        'last_uploaded_file_id_processed_successfully': None, 
+        'config_applied_successfully': False, 'show_privacy_policy': False,
+        'user_question_from_button': "", 'submit_from_preset_button': False,
+        'auth_method': "Carica File JSON Account di Servizio", # Default al metodo JSON
+        'oauth_flow_initiated': False, 'user_oauth_credentials': None,
+        'oauth_project_id': None, 'gcp_project_id_input': "example-project-id",
+        'enable_chart_generation': False
+    }
+    for key, value in default_session_state.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
-# Inizializzazione st.session_state
-default_session_state = {
-    'uploaded_project_id': None, 'sql_query': "", 'query_results': None,
-    'results_summary': "", 'table_schema_for_prompt': "", 'last_prompt': "",
-    'current_schema_config_key': "", 'credentials_successfully_loaded_by_app': False,
-    'last_uploaded_file_id_processed_successfully': None, 
-    'config_applied_successfully': False, 'show_privacy_policy': False,
-    'user_question_from_button': "", 'submit_from_preset_button': False,
-    'auth_method': None, 'oauth_flow_initiated': False, 'user_oauth_credentials': None,
-    'oauth_project_id': None, 'gcp_project_id_input': "example-project-id" # Per l'input text
-}
-for key, value in default_session_state.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
+initialize_session_state()
 
 
 def on_config_change():
@@ -514,45 +495,47 @@ def on_config_change():
     print("DEBUG: Configurazione cambiata, config_applied_successfully resettato.")
 
 def on_auth_method_change():
-    reset_all_auth_states() # Resetta tutto quando si cambia metodo
-    on_config_change() # Resetta anche lo stato di applicazione config
-    # Non è necessario un rerun qui, il cambio di widget lo farà
+    reset_all_auth_states() 
+    on_config_change() 
 
 
 # --- Sidebar ---
 with st.sidebar:
     st.header("⚙️ Configurazione")
 
-    auth_method_options = ["Carica File JSON Account di Servizio", "Accedi con Google (OAuth 2.0)"]
-    # Se i secret OAuth non sono configurati, non mostrare l'opzione OAuth
+    auth_method_options = ["Carica File JSON Account di Servizio"]
+    oauth_configured = False
     try:
-        if not (st.secrets.get("OAUTH_CLIENT_ID") and st.secrets.get("OAUTH_CLIENT_SECRET")):
-            auth_method_options = ["Carica File JSON Account di Servizio"]
-    except Exception: # Se st.secrets non è disponibile (es. sviluppo locale senza secrets.toml)
-         auth_method_options = ["Carica File JSON Account di Servizio"]
+        if st.secrets.get("OAUTH_CLIENT_ID") and st.secrets.get("OAUTH_CLIENT_SECRET"):
+            auth_method_options.append("Accedi con Google (OAuth 2.0)")
+            oauth_configured = True
+    except Exception: 
+        pass # st.secrets non disponibile in locale senza .streamlit/secrets.toml
 
-
-    # Se c'è solo un'opzione, preselezionala e non mostrare il radio
-    if len(auth_method_options) == 1:
+    # Se c'è solo un'opzione o se auth_method non è ancora stato impostato correttamente
+    if len(auth_method_options) == 1 or st.session_state.auth_method not in auth_method_options:
         st.session_state.auth_method = auth_method_options[0]
-        # st.info(f"Metodo di autenticazione predefinito: {st.session_state.auth_method}")
-    else:
+    
+    if len(auth_method_options) > 1:
         st.session_state.auth_method = st.radio(
             "Scegli il metodo di autenticazione:",
             auth_method_options,
             key="auth_method_radio",
-            on_change=on_auth_method_change, # Resetta tutto se si cambia metodo
-            index=auth_method_options.index(st.session_state.auth_method) if st.session_state.auth_method in auth_method_options else 0
+            on_change=on_auth_method_change,
+            index=auth_method_options.index(st.session_state.auth_method)
         )
+    else:
+        st.info(f"Metodo di autenticazione: {st.session_state.auth_method}")
+
     
     st.divider()
 
     if st.session_state.auth_method == "Carica File JSON Account di Servizio":
-        st.subheader("1. Carica File Credenziali GCP (JSON)")
+        st.subheader("1a. Carica File Credenziali Account di Servizio")
         uploaded_credential_file = st.file_uploader(
             "Seleziona il file JSON della chiave del tuo account di servizio GCP", 
             type="json", 
-            key="credential_uploader_sa", # Chiave diversa per evitare conflitti
+            key="credential_uploader_sa",
             on_change=on_config_change 
         )
         if uploaded_credential_file is not None:
@@ -562,7 +545,6 @@ with st.sidebar:
                 if load_credentials_from_service_account_file(uploaded_credential_file):
                     st.session_state.gcp_project_id_input = st.session_state.uploaded_project_id or "example-project-id"
                     st.rerun() 
-                # else: l'errore è già mostrato da load_credentials...
         elif uploaded_credential_file is None and st.session_state.credentials_successfully_loaded_by_app:
             reset_config_and_creds_state() 
             st.rerun()
@@ -573,143 +555,118 @@ with st.sidebar:
             st.warning("🤖💬 Carica file credenziali JSON.")
 
     elif st.session_state.auth_method == "Accedi con Google (OAuth 2.0)":
-        st.subheader("1. Autenticazione Google (OAuth 2.0)")
+        st.subheader("1b. Autenticazione Google (OAuth 2.0)")
         OAUTH_CLIENT_ID = st.secrets.get("OAUTH_CLIENT_ID")
         OAUTH_CLIENT_SECRET = st.secrets.get("OAUTH_CLIENT_SECRET")
-        # Assicurati che l'URL di base sia corretto per il deploy
-        # Per Streamlit Cloud, questo è generalmente l'URL dell'app.
-        # Per lo sviluppo locale, è http://localhost:port
-        # È cruciale che questo URI sia aggiunto agli "URI di reindirizzamento autorizzati" in GCP Console.
-        try:
-            # Tenta di ottenere l'URL base del server Streamlit
-            # Questo potrebbe non funzionare in tutti gli ambienti di deploy, specialmente dietro reverse proxy complessi.
-            # In tal caso, potrebbe essere necessario impostarlo manualmente o tramite una variabile d'ambiente.
-            from streamlit.web.server.server import Server
-            # Questo è un accesso a un attributo interno e potrebbe cambiare in futuro.
-            # È meglio se Streamlit fornisce un modo ufficiale per ottenere l'URL base.
-            session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
-            if session_info and hasattr(session_info, 'ws_base_url'):
-                 # ws_base_url è tipo 'ws://localhost:8501/stream' o 'wss://app.streamlit.app/stream'
-                 http_protocol = "https" if session_info.ws_base_url.startswith("wss:") else "http"
-                 host_port_path = session_info.ws_base_url.split("://")[1].split("/stream")[0]
-                 REDIRECT_URI = f"{http_protocol}://{host_port_path}/" # Usa la root dell'app
-            else: # Fallback per locale o se non ottenibile
-                 REDIRECT_URI = "https://chatgsc.streamlit.app" # Assicurati che sia corretto per il tuo ambiente
-            st.caption(f"DEBUG: Redirect URI calcolato: {REDIRECT_URI}")
-        except Exception:
-             REDIRECT_URI = "https://chatgsc.streamlit.app" # Fallback
-             st.caption(f"DEBUG: Redirect URI (fallback): {REDIRECT_URI}")
+        
+        # Gestione REDIRECT_URI più robusta
+        if "STREAMLIT_SERVER_ADDRESS" in os.environ and "STREAMLIT_SERVER_PORT" in os.environ: # Streamlit Cloud
+             base_url = os.environ.get("STREAMLIT_SERVER_ADDRESS", "") # Questo sarà l'URL pubblico
+             if not base_url.startswith("http"):
+                 base_url = "https://" + base_url # Assumiamo HTTPS per Streamlit Cloud
+             REDIRECT_URI = base_url.strip("/") + "/"
+        else: # Sviluppo locale
+            try:
+                from streamlit.web.server.server import Server
+                session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
+                if session_info and hasattr(session_info, 'ws_base_url'):
+                    http_protocol = "https" if session_info.ws_base_url.startswith("wss:") else "http"
+                    host_port_path = session_info.ws_base_url.split("://")[1].split("/stream")[0]
+                    REDIRECT_URI = f"{http_protocol}://{host_port_path}/"
+                else: 
+                    REDIRECT_URI = "http://localhost:8501/"
+            except Exception:
+                 REDIRECT_URI = "http://localhost:8501/"
+        # st.caption(f"DEBUG: Redirect URI: {REDIRECT_URI}")
 
 
         SCOPES = [
-            "openid",
-            "[https://www.googleapis.com/auth/userinfo.email](https://www.googleapis.com/auth/userinfo.email)",
-            "[https://www.googleapis.com/auth/userinfo.profile](https://www.googleapis.com/auth/userinfo.profile)",
-            "[https://www.googleapis.com/auth/cloud-platform](https://www.googleapis.com/auth/cloud-platform)", # Per Vertex AI
-            "[https://www.googleapis.com/auth/bigquery.readonly](https://www.googleapis.com/auth/bigquery.readonly)" # Per BigQuery
+            "openid", "https://www.googleapis.com/auth/userinfo.email",
+            "https://www.googleapis.com/auth/userinfo.profile",
+            "https://www.googleapis.com/auth/cloud-platform", 
+            "https://www.googleapis.com/auth/bigquery.readonly"
         ]
 
-        if not OAUTH_CLIENT_ID or not OAUTH_CLIENT_SECRET:
-            st.error("🤖💬 Configurazione OAuth (Client ID/Secret) mancante nei secrets di Streamlit.")
-        elif 'user_oauth_credentials' not in st.session_state or st.session_state.user_oauth_credentials is None:
-            query_params = st.query_params # Usa il nuovo st.query_params
+        if not st.session_state.get('user_oauth_credentials'):
+            query_params = st.query_params
             auth_code = query_params.get("code")
+            if auth_code and isinstance(auth_code, list): auth_code = auth_code[0]
 
-            if auth_code and isinstance(auth_code, list): # query_params restituisce una lista
-                auth_code = auth_code[0]
-
-            flow = Flow.from_client_secrets_file(
-                client_secrets_file=None, # Non usiamo un file fisico, ma i secrets
-                scopes=SCOPES,
-                redirect_uri=REDIRECT_URI,
-                client_config={
-                    "web": {
-                        "client_id": OAUTH_CLIENT_ID,
-                        "client_secret": OAUTH_CLIENT_SECRET,
-                        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                        "token_uri": "https://oauth2.googleapis.com/token",
-                        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
-                    }
+            client_config_dict = {
+                "web": {
+                    "client_id": OAUTH_CLIENT_ID, "client_secret": OAUTH_CLIENT_SECRET,
+                    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                    "token_uri": "https://oauth2.googleapis.com/token",
+                    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs"
                 }
-            )
+            }
+            flow = Flow.from_client_config(client_config_dict, scopes=SCOPES, redirect_uri=REDIRECT_URI)
 
             if auth_code and not st.session_state.get('oauth_flow_initiated', False):
                 try:
                     flow.fetch_token(code=auth_code)
                     credentials = flow.credentials
-                    # Salva le informazioni essenziali delle credenziali in session_state
-                    # NON salvare l'oggetto Credentials direttamente se contiene info sensibili non serializzabili facilmente
-                    # o se la sessione è condivisa/esposta. Per ora, salviamo info per ricostruirlo.
                     st.session_state.user_oauth_credentials = {
-                        "token": credentials.token,
-                        "refresh_token": credentials.refresh_token,
-                        "token_uri": credentials.token_uri,
-                        "client_id": credentials.client_id,
-                        "client_secret": credentials.client_secret,
-                        "scopes": credentials.scopes
+                        "token": credentials.token, "refresh_token": credentials.refresh_token,
+                        "token_uri": credentials.token_uri, "client_id": credentials.client_id,
+                        "client_secret": credentials.client_secret, "scopes": credentials.scopes
                     }
-                    st.session_state.credentials_successfully_loaded_by_app = True
-                    st.session_state.oauth_flow_initiated = False # Resetta il flag
+                    st.session_state.credentials_successfully_loaded_by_app = True # Indica che le credenziali sono caricate
+                    st.session_state.oauth_flow_initiated = False
                     
-                    # Tenta di ottenere il project_id dalle credenziali utente
+                    # Tenta di ottenere il project_id dalle credenziali utente (best-effort)
                     try:
-                        # Imposta temporaneamente le credenziali per la chiamata google.auth.default()
-                        # Questo è un po' un hack, ideale sarebbe avere un client pre-autenticato
-                        from google.oauth2 import service_account
-                        if _temp_gcp_creds_file_path and os.path.exists(_temp_gcp_creds_file_path):
-                            os.remove(_temp_gcp_creds_file_path) # Rimuovi SA se presente
-                        if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
-                             del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
-                        
-                        # Per far funzionare google.auth.default() con credenziali utente,
-                        # le librerie client di solito si aspettano che queste siano state impostate
-                        # globalmente o passate esplicitamente.
-                        # Per ora, lasciamo che l'utente inserisca il project ID manualmente se usa OAuth.
-                        st.session_state.uploaded_project_id = None # Non possiamo ottenerlo facilmente dai token utente
-                        st.session_state.gcp_project_id_input = "" # Svuota per forzare l'input
-
+                        # Per usare le credenziali utente per questa chiamata, devono essere impostate
+                        # temporaneamente o passate esplicitamente.
+                        # Questo è complesso da fare in modo sicuro e robusto qui.
+                        # Per ora, l'utente dovrà inserire il project_id.
+                        st.session_state.uploaded_project_id = None # Non precompilare da OAuth per ora
+                        st.session_state.gcp_project_id_input = "" # Richiedi input
                     except Exception as e_proj:
                         print(f"DEBUG: Impossibile ottenere project_id da credenziali OAuth: {e_proj}")
                         st.session_state.gcp_project_id_input = ""
-
-
+                    
                     st.success("🤖💬 Accesso con Google riuscito!")
-                    st.rerun() # Ricarica per aggiornare la UI
+                    # Rimuovi il codice dalla URL e fai un rerun
+                    st.query_params.clear() # Rimuove il codice dalla URL
+                    st.rerun()
                 except Exception as e:
                     st.error(f"🤖💬 Errore durante lo scambio del token OAuth: {e}")
                     st.session_state.oauth_flow_initiated = False
             else:
-                auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
-                st.markdown(f'<a href="{auth_url}" target="_self">Accedi con Google</a>', unsafe_allow_html=True)
-                st.session_state.oauth_flow_initiated = True # Flag per indicare che il flusso è iniziato
-                st.info("🤖💬 Clicca il link sopra per accedere con Google. Potrebbe essere necessario ricaricare la pagina dopo il reindirizzamento se non si aggiorna automaticamente.")
+                if not st.session_state.get('oauth_flow_initiated'):
+                    auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
+                    st.markdown(f'<a href="{auth_url}" target="_self" class="button">Accedi con Google</a>', unsafe_allow_html=True)
+                    st.markdown("""
+                    <style>.button {display:inline-block; background-color:#4285F4; color:white; padding:10px 15px; text-align:center; border-radius:4px; text-decoration:none; font-weight:bold;}</style>
+                    """, unsafe_allow_html=True)
+                    if st.button("Avvia Flusso OAuth (se il link non funziona)", key="oauth_manual_start"):
+                        st.session_state.oauth_flow_initiated = True
+                        st.rerun()
         
-        elif 'user_oauth_credentials' in st.session_state and st.session_state.user_oauth_credentials:
+        if st.session_state.get('user_oauth_credentials'):
             st.success("🤖💬 Autenticato con Google.")
-            # Qui potresti mostrare l'email dell'utente o altre info
-            # if st.button("Logout da Google"):
-            #     reset_all_auth_states()
-            #     st.rerun()
+            if st.button("Logout da Google", key="oauth_logout"):
+                reset_all_auth_states()
+                st.rerun()
 
     st.divider()
     st.subheader("2. Parametri Query")
     
-    # Gestione del project_id precompilato
-    current_project_id_value = "example-project-id" # Default generico
-    if st.session_state.get('auth_method') == "Carica File JSON Account di Servizio":
+    current_project_id_value = "example-project-id" 
+    if st.session_state.auth_method == "Carica File JSON Account di Servizio":
         current_project_id_value = st.session_state.get('uploaded_project_id', "example-project-id")
-    elif st.session_state.get('auth_method') == "Accedi con Google (OAuth 2.0)":
-        # Per OAuth, l'utente deve inserire il project_id target, non è nel token utente.
-        # Manteniamo il valore inserito dall'utente o il default se non ancora inserito.
+    elif st.session_state.auth_method == "Accedi con Google (OAuth 2.0)":
         current_project_id_value = st.session_state.get('gcp_project_id_input', "example-project-id")
-
 
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
                                    value=current_project_id_value, 
                                    help="ID progetto GCP. Con JSON, precompilato. Con OAuth, inseriscilo.",
                                    on_change=on_config_change,
-                                   key="gcp_project_id_input_field") # Key per poterlo aggiornare
-    st.session_state.gcp_project_id_input = gcp_project_id # Salva l'input dell'utente per OAuth
+                                   key="gcp_project_id_input_field")
+    if st.session_state.auth_method == "Accedi con Google (OAuth 2.0)":
+        st.session_state.gcp_project_id_input = gcp_project_id
+
 
     gcp_location = st.text_input("Location Vertex AI", "europe-west1", 
                                  help="Es. us-central1. Modello deve essere disponibile qui.",
@@ -740,29 +697,22 @@ with st.sidebar:
 
     if apply_config_button:
         all_fields_filled = True
-        # Controllo credenziali basato sul metodo scelto
         if st.session_state.auth_method == "Carica File JSON Account di Servizio" and not st.session_state.credentials_successfully_loaded_by_app:
             st.error("🤖💬 Per favore, carica un file di credenziali JSON valido.")
             all_fields_filled = False
         elif st.session_state.auth_method == "Accedi con Google (OAuth 2.0)" and not st.session_state.get('user_oauth_credentials'):
             st.error("🤖💬 Per favore, completa l'accesso con Google.")
             all_fields_filled = False
-        elif not st.session_state.auth_method: # Nessun metodo scelto
+        elif not st.session_state.auth_method:
              st.error("🤖💬 Scegli un metodo di autenticazione.")
              all_fields_filled = False
 
         if not gcp_project_id:
             st.error("🤖💬 ID Progetto Google Cloud è obbligatorio.")
             all_fields_filled = False
-        if not gcp_location:
-            st.error("🤖💬 Location Vertex AI è obbligatoria.")
-            all_fields_filled = False
-        if not bq_dataset_id:
-            st.error("🤖💬 ID Dataset BigQuery è obbligatorio.")
-            all_fields_filled = False
-        if not bq_table_names_str:
-            st.error("🤖💬 Nomi Tabelle GSC sono obbligatori.")
-            all_fields_filled = False
+        if not gcp_location: st.error("🤖💬 Location Vertex AI è obbligatoria."); all_fields_filled = False
+        if not bq_dataset_id: st.error("🤖💬 ID Dataset BigQuery è obbligatorio."); all_fields_filled = False
+        if not bq_table_names_str: st.error("🤖💬 Nomi Tabelle GSC sono obbligatori."); all_fields_filled = False
         
         if all_fields_filled:
             st.session_state.config_applied_successfully = True
@@ -777,12 +727,11 @@ with st.sidebar:
 
 
 # Logica per caricare lo schema solo se la configurazione è stata applicata
-# e se le credenziali sono effettivamente caricate (o via env var per SA, o via OAuth state)
 creds_available_for_schema = (st.session_state.auth_method == "Carica File JSON Account di Servizio" and os.getenv("GOOGLE_APPLICATION_CREDENTIALS")) or \
                              (st.session_state.auth_method == "Accedi con Google (OAuth 2.0)" and st.session_state.get('user_oauth_credentials'))
 
 if st.session_state.config_applied_successfully and creds_available_for_schema:
-    if gcp_project_id and bq_dataset_id and bq_table_names_str: # Assicurati che questi siano definiti
+    if gcp_project_id and bq_dataset_id and bq_table_names_str:
         schema_config_key = f"{gcp_project_id}_{bq_dataset_id}_{bq_table_names_str}"
         if st.session_state.current_schema_config_key != schema_config_key or not st.session_state.table_schema_for_prompt:
             with st.spinner("Recupero schema tabelle da BigQuery..."):
