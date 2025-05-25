@@ -32,7 +32,7 @@ _temp_gcp_creds_file_path = None
 
 # OAuth Client ID (impostato staticamente come da JSON fornito dall'utente)
 # Il CLIENT_SECRET DEVE rimanere in st.secrets
-OAUTH_CLIENT_ID_STATIC = "266022298110-avmhjfgbpsfhbc9m6b5onv3ift7rsdfq.apps.googleusercontent.com"
+OAUTH_CLIENT_ID = "266022298110-avmhjfgbpsfhbc9m6b5onv3ift7rsdfq.apps.googleusercontent.com"
 # URI di Reindirizzamento Fisso per il deploy
 DEPLOYED_REDIRECT_URI = "https://chatgsc.streamlit.app/"
 
@@ -196,7 +196,7 @@ def get_gcp_credentials_object():
                     token=creds_dict.get('token'),
                     refresh_token=creds_dict.get('refresh_token'), 
                     token_uri=creds_dict.get('token_uri', "https://oauth2.googleapis.com/token"), 
-                    client_id=creds_dict.get('client_id', OAUTH_CLIENT_ID_STATIC),    
+                    client_id=creds_dict.get('client_id', OAUTH_CLIENT_ID),    
                     client_secret=oauth_client_secret_from_secrets, 
                     scopes=creds_dict.get('scopes')
                 )
@@ -526,7 +526,7 @@ with st.sidebar:
     auth_method_options = ["Carica File JSON Account di Servizio"]
     OAUTH_CLIENT_SECRET_FROM_SECRETS = st.secrets.get("OAUTH_CLIENT_SECRET")
     
-    if OAUTH_CLIENT_ID_STATIC and OAUTH_CLIENT_SECRET_FROM_SECRETS:
+    if OAUTH_CLIENT_ID and OAUTH_CLIENT_SECRET_FROM_SECRETS:
         auth_method_options.append("Accedi con Google (OAuth 2.0)")
 
     if len(auth_method_options) == 1 or st.session_state.auth_method not in auth_method_options:
@@ -617,12 +617,12 @@ with st.sidebar:
                 del os.environ['OAUTHLIB_INSECURE_TRANSPORT']
                 print("DEBUG: OAUTHLIB_INSECURE_TRANSPORT rimosso.")
         
-        if not OAUTH_CLIENT_ID_STATIC or not OAUTH_CLIENT_SECRET_FROM_SECRETS:
+        if not OAUTH_CLIENT_ID or not OAUTH_CLIENT_SECRET_FROM_SECRETS:
              st.error("🤖💬 Client ID o Client Secret OAuth non configurati correttamente (ID statico o secret mancante).")
         elif 'oauth_credentials' not in st.session_state or st.session_state.oauth_credentials is None:
             client_config_dict = {
                 "web": {
-                    "client_id": OAUTH_CLIENT_ID_STATIC,
+                    "client_id": OAUTH_CLIENT_ID,
                     "project_id": st.session_state.get('gcp_project_id_input') or "nlp-project-448915", 
                     "auth_uri": AUTHORIZE_ENDPOINT,
                     "token_uri": TOKEN_ENDPOINT,
@@ -668,7 +668,7 @@ with st.sidebar:
                                 import google.auth.transport.requests
                                 request = google.auth.transport.requests.Request()
                                 id_info = google.oauth2.id_token.verify_oauth2_token(
-                                    credentials.id_token, request, OAUTH_CLIENT_ID_STATIC
+                                    credentials.id_token, request, OAUTH_CLIENT_ID
                                 )
                                 st.session_state.user_email = id_info.get('email')
                             except Exception as e_id:
