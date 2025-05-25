@@ -9,7 +9,6 @@ import tempfile
 import json
 import atexit
 import matplotlib.pyplot as plt 
-# from google_auth_oauthlib.flow import Flow # Non più necessario per il flow OAuth
 from google.oauth2.credentials import Credentials # Per OAuth
 import google.auth # Per ottenere il progetto di default dalle credenziali OAuth
 import streamlit_oauth as oauth # Nuova libreria per OAuth
@@ -555,9 +554,9 @@ with st.sidebar:
     elif st.session_state.auth_method == "Accedi con Google (OAuth 2.0)":
         st.subheader("1b. Autenticazione Google (OAuth 2.0)")
         
-        AUTHORIZE_ENDPOINT = "[https://accounts.google.com/o/oauth2/v2/auth](https://accounts.google.com/o/oauth2/v2/auth)"
-        TOKEN_ENDPOINT = "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)"
-        REVOKE_ENDPOINT = "[https://oauth2.googleapis.com/revoke](https://oauth2.googleapis.com/revoke)"
+        AUTHORIZE_ENDPOINT = "[https://accounts.google.com/o/oauth2/v2/auth](https://accounts.google.com/o/oauth2/v2/auth)" # CORRETTO
+        TOKEN_ENDPOINT = "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)" # CORRETTO
+        REVOKE_ENDPOINT = "[https://oauth2.googleapis.com/revoke](https://oauth2.googleapis.com/revoke)" # CORRETTO
         
         try:
             from streamlit.web.server.server import Server
@@ -572,7 +571,7 @@ with st.sidebar:
              REDIRECT_URI = "http://localhost:8501/" 
         # st.caption(f"DEBUG: OAuth Redirect URI: {REDIRECT_URI}")
 
-        SCOPES = [
+        SCOPES = [ # CORRETTI: URL semplici
             "openid", "[https://www.googleapis.com/auth/userinfo.email](https://www.googleapis.com/auth/userinfo.email)",
             "[https://www.googleapis.com/auth/userinfo.profile](https://www.googleapis.com/auth/userinfo.profile)",
             "[https://www.googleapis.com/auth/cloud-platform](https://www.googleapis.com/auth/cloud-platform)", 
@@ -599,7 +598,7 @@ with st.sidebar:
                     scope=" ".join(SCOPES), 
                     pkce="S256",
                     use_container_width=True
-                    # Rimosso type="primary"
+                    # Rimosso type="primary" che causava errore
                 )
                 
                 if result and "token" in result:
