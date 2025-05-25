@@ -11,8 +11,8 @@ import atexit
 import matplotlib.pyplot as plt 
 from google.oauth2.credentials import Credentials 
 import google.auth 
-from google_auth_oauthlib.flow import Flow 
-import webbrowser
+from google_auth_oauthlib.flow import Flow # Import CORRETTO per OAuth
+# import webbrowser # Non più strettamente necessario con st.link_button
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
@@ -61,7 +61,7 @@ def reset_all_auth_states():
         'auth_method',
         'oauth_flow_auth_url', 
         'oauth_flow_state',
-        'oauth_flow_auth_url_generated_this_run' # Aggiunto per reset
+        'oauth_flow_auth_url_generated_this_run'
     ]
     for key in keys_to_reset:
         if key in st.session_state:
@@ -475,12 +475,13 @@ def initialize_session_state():
         'config_applied_successfully': False, 'show_privacy_policy': False,
         'user_question_from_button': "", 'submit_from_preset_button': False,
         'auth_method': "Carica File JSON Account di Servizio", 
-        'oauth_credentials': None, # Modificato per google-auth-oauthlib
+        'oauth_credentials': None, 
         'user_email': None, 
         'gcp_project_id_input': "example-project-id",
         'enable_chart_generation': False,
         'oauth_flow_auth_url': None, 
-        'oauth_flow_state': None 
+        'oauth_flow_state': None,
+        'oauth_flow_auth_url_generated_this_run': False # Nuovo stato per gestire la generazione dell'URL
     }
     for key, value in default_session_state.items():
         if key not in st.session_state:
@@ -492,6 +493,7 @@ initialize_session_state()
 def on_config_change():
     st.session_state.config_applied_successfully = False
     st.session_state.current_schema_config_key = "" 
+    st.session_state.oauth_flow_auth_url_generated_this_run = False # Resetta anche questo
     print("DEBUG: Configurazione cambiata, config_applied_successfully resettato.")
 
 def on_auth_method_change():
@@ -553,7 +555,12 @@ with st.sidebar:
     elif st.session_state.auth_method == "Accedi con Google (OAuth 2.0)":
         st.subheader("1b. Autenticazione Google (OAuth 2.0)")
         
-        SCOPES = [ # Definiti come stringhe URL semplici
+        # Definizioni degli endpoint e degli scope come stringhe URL semplici e corrette
+        AUTHORIZE_ENDPOINT = "[https://accounts.google.com/o/oauth2/v2/auth](https://accounts.google.com/o/oauth2/v2/auth)"
+        TOKEN_ENDPOINT = "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)"
+        # REVOKE_ENDPOINT = "[https://oauth2.googleapis.com/revoke](https://oauth2.googleapis.com/revoke)" # Non usato attivamente
+        
+        SCOPES = [
             "openid", 
             "[https://www.googleapis.com/auth/userinfo.email](https://www.googleapis.com/auth/userinfo.email)",
             "[https://www.googleapis.com/auth/userinfo.profile](https://www.googleapis.com/auth/userinfo.profile)",
@@ -562,39 +569,58 @@ with st.sidebar:
         ]
         
         # Determina REDIRECT_URI
-        # Per Streamlit Cloud, l'URL base dell'app è l'URI di reindirizzamento.
-        # Per lo sviluppo locale, è http://localhost:8501/ (o la porta che usi).
-        # È FONDAMENTALE che questo URI sia registrato nella GCP Console per il tuo Client ID OAuth.
-        
-        # Tentativo di determinare l'URL base dell'app Streamlit
-        # NOTA: Questo approccio potrebbe non essere sempre affidabile al 100% in tutti gli ambienti di deploy.
-        # Se hai problemi, potresti dover impostare REDIRECT_URI manualmente o tramite una variabile d'ambiente.
         try:
-            # Questo è un modo per tentare di ottenere l'URL base, ma potrebbe non essere futuro-compatibile.
-            # from streamlit.web.server.server import Server
-            # session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
-            # server_address = session_info.server_address
-            # server_port = session_info.server_port
-            # if server_address == "localhost" or server_address == "127.0.0.1":
-            #     REDIRECT_URI = f"http://{server_address}:{server_port}/"
-            # else: # Presumibilmente un indirizzo pubblico per Streamlit Cloud o simile
-            #     REDIRECT_URI = f"https://{server_address}/" # Assumendo HTTPS per deploy pubblici
-            # Per Streamlit Cloud, l'URL base è l'URL pubblico dell'app.
-            # Per localhost, è http://localhost:8501 (o altra porta)
-            # Questo è un punto delicato. Un modo più semplice è chiedere all'utente di configurarlo o dedurlo.
-            # Per ora, usiamo un approccio che dovrebbe funzionare per localhost e per Streamlit Cloud se l'URL base è l'host.
-            # Se si usa `st.query_params`, l'URL corrente è la base del redirect.
-            # Per semplicità e robustezza, impostiamo due opzioni comuni:
-            if "STREAMLIT_SERVER_ADDRESS" in os.environ and os.environ["STREAMLIT_SERVER_ADDRESS"]: # Heuristica per Streamlit Cloud
-                 app_url_base = os.environ["STREAMLIT_SERVER_ADDRESS"]
-                 if not app_url_base.startswith("http"):
-                     app_url_base = "https://" + app_url_base # Assumi HTTPS
-                 REDIRECT_URI = app_url_base.strip("/") + "/"
-                 print(f"DEBUG: Using STREAMLIT_SERVER_ADDRESS for REDIRECT_URI: {REDIRECT_URI}")
+            # Tenta di ottenere l'URL base dell'app Streamlit
+            # Questo è un approccio euristico e potrebbe necessitare di aggiustamenti
+            # a seconda dell'ambiente di deploy.
+            # In Streamlit Cloud, l'URL base è tipicamente l'URL pubblico dell'app.
+            # Per lo sviluppo locale, è http://localhost:PORTA/.
+            # È cruciale che questo URI sia registrato nella GCP Console per il tuo Client ID OAuth.
+            if "streamlit_sharing. แชร์ผ่าน Streamlit" in st.เวอร์ชัน: # Heuristic per Streamlit Cloud
+                # In Streamlit Cloud, l'URL base è l'URL pubblico dell'app.
+                # Ottenere questo programmaticamente in modo robusto può essere difficile.
+                # Per ora, assumiamo che l'utente lo configuri correttamente in GCP.
+                # Potremmo provare a dedurlo, ma è rischioso.
+                # Per il deploy su chatgsc.streamlit.app, l'URI di redirect è [https://chatgsc.streamlit.app/](https://chatgsc.streamlit.app/)
+                # Questo deve essere configurato manualmente in GCP Console.
+                # Se l'app ha un nome diverso, l'URL cambierà.
+                # Una soluzione più robusta sarebbe leggere l'URL base da una variabile d'ambiente se disponibile.
+                
+                # Tentativo di dedurre l'URL base se deployato
+                # Questo è un HACK e potrebbe non funzionare sempre o essere sicuro.
+                # È meglio se Streamlit fornisce un modo ufficiale per ottenere l'URL base.
+                # Per ora, ci affidiamo al fatto che l'utente configuri l'URI corretto in GCP.
+                # Se l'app è su [https://chatgsc.streamlit.app/](https://chatgsc.streamlit.app/), allora REDIRECT_URI = "[https://chatgsc.streamlit.app/](https://chatgsc.streamlit.app/)"
+                # Questo deve essere verificato e configurato manualmente in GCP.
+                # Per lo sviluppo locale, usiamo localhost.
+                
+                # Tentativo di usare l'header Host se disponibile (funziona in alcuni ambienti)
+                # Questo è un tentativo, potrebbe non essere disponibile o sicuro.
+                # headers = st.experimental_get_query_params() # Deprecato
+                # request_headers = st.experimental_get_request_headers() # Potrebbe non essere disponibile o sicuro
+                # host = request_headers.get("Host") if request_headers else None
+
+                # Logica più sicura per REDIRECT_URI
+                if os.environ.get("STREAMLIT_SERVER_ADDRESS"): # Spesso impostato in Streamlit Cloud
+                    app_url_base = os.environ["STREAMLIT_SERVER_ADDRESS"]
+                    if not app_url_base.startswith("http"):
+                        app_url_base = "https://" + app_url_base # Assumi HTTPS per Streamlit Cloud
+                    REDIRECT_URI = app_url_base.strip("/") + "/"
+                else: # Fallback per locale o se la var d'ambiente non è impostata
+                    try:
+                        # Tenta di ottenere l'URL base da Streamlit Server (può essere instabile)
+                        from streamlit.web.server.server import Server
+                        session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
+                        if session_info and hasattr(session_info, 'ws_base_url'):
+                            http_protocol = "https" if session_info.ws_base_url.startswith("wss:") else "http"
+                            host_port_path = session_info.ws_base_url.split("://")[1].split("/stream")[0]
+                            REDIRECT_URI = f"{http_protocol}://{host_port_path}/"
+                        else: 
+                            REDIRECT_URI = "http://localhost:8501/" # Fallback per locale
+                    except Exception:
+                         REDIRECT_URI = "http://localhost:8501/" # Fallback robusto
             else: # Sviluppo locale
                  REDIRECT_URI = "http://localhost:8501/"
-                 print(f"DEBUG: Using localhost for REDIRECT_URI: {REDIRECT_URI}")
-
         except Exception as e_uri:
              REDIRECT_URI = "http://localhost:8501/" # Fallback robusto
              print(f"DEBUG: Eccezione nel determinare REDIRECT_URI, fallback a localhost: {e_uri}")
@@ -615,9 +641,9 @@ with st.sidebar:
                 "web": {
                     "client_id": OAUTH_CLIENT_ID,
                     "client_secret": OAUTH_CLIENT_SECRET,
-                    "auth_uri": "[https://accounts.google.com/o/oauth2/auth](https://accounts.google.com/o/oauth2/auth)",
-                    "token_uri": "[https://oauth2.googleapis.com/token](https://oauth2.googleapis.com/token)",
-                    "auth_provider_x509_cert_url": "[https://www.googleapis.com/oauth2/v1/certs](https://www.googleapis.com/oauth2/v1/certs)",
+                    "auth_uri": AUTHORIZE_ENDPOINT, # URL semplice
+                    "token_uri": TOKEN_ENDPOINT,     # URL semplice
+                    "auth_provider_x509_cert_url": "[https://www.googleapis.com/oauth2/v1/certs](https://www.googleapis.com/oauth2/v1/certs)", # URL semplice
                     "redirect_uris": [REDIRECT_URI] # Deve essere una lista
                 }
             }
@@ -639,9 +665,8 @@ with st.sidebar:
                     try:
                         print(f"DEBUG: Tentativo di fetch_token con codice: {auth_code} e redirect_uri: {flow.redirect_uri}")
                         flow.fetch_token(code=auth_code)
-                        credentials = flow.credentials # google.oauth2.credentials.Credentials object
+                        credentials = flow.credentials 
                         
-                        # Salva le informazioni delle credenziali in un formato serializzabile
                         st.session_state.oauth_credentials = {
                             "token": credentials.token,
                             "refresh_token": credentials.refresh_token,
@@ -651,7 +676,7 @@ with st.sidebar:
                             "scopes": credentials.scopes,
                             "quota_project_id": credentials.quota_project_id 
                         }
-                        st.session_state.credentials_successfully_loaded_by_app = True # Flag generico
+                        st.session_state.credentials_successfully_loaded_by_app = True
                         
                         if credentials and credentials.id_token:
                             try:
@@ -664,21 +689,20 @@ with st.sidebar:
                                 st.session_state.user_email = "Email non disponibile"
                         
                         st.session_state.oauth_flow_state = None 
-                        st.query_params.clear() # Rimuove i parametri dall'URL per evitare riprocessamento
+                        st.query_params.clear() 
                         st.rerun()
                     except Exception as e:
                         st.error(f"🤖💬 Errore durante lo scambio del token OAuth: {e}")
                         st.session_state.oauth_flow_state = None
-                else: # Se non c'è codice o lo stato non corrisponde, mostra il link di login
+                else: 
                     try:
                         auth_url, state = flow.authorization_url(
-                            access_type='offline', # Per ottenere un refresh_token
-                            prompt='consent' # Forza la schermata di consenso
+                            access_type='offline', 
+                            prompt='consent' 
                         )
                         st.session_state.oauth_flow_auth_url = auth_url
                         st.session_state.oauth_flow_state = state
                         
-                        # Usa st.link_button per un aspetto più nativo e una gestione migliore dei link
                         st.link_button("Accedi con Google", auth_url, use_container_width=True)
                         st.info("🤖💬 Clicca il pulsante sopra per accedere con Google.")
                     except Exception as e_auth_url:
@@ -953,7 +977,7 @@ with right_footer_col:
 
 if st.session_state.get('show_privacy_policy', False):
     st.subheader("Informativa sulla Privacy per ChatGSC")
-    privacy_container = st.container() # Usiamo un container per la policy
+    privacy_container = st.container()
     with privacy_container: 
         privacy_html = PRIVACY_POLICY_TEXT.replace('**', '<b>').replace('\n', '<br>')
         if privacy_html.endswith('<br>'):
