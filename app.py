@@ -559,23 +559,17 @@ with st.sidebar:
         REVOKE_ENDPOINT = "[https://oauth2.googleapis.com/revoke](https://oauth2.googleapis.com/revoke)"
         
         try:
-            # Tenta di ottenere l'URL base del server Streamlit
-            # Questo potrebbe non funzionare in tutti gli ambienti di deploy.
-            from streamlit.web.server.server import Server 
+            from streamlit.web.server.server import Server
             session_info = Server.get_current().get_session_info(st.runtime.scriptrunner.get_script_run_ctx().session_id)
             if session_info and hasattr(session_info, 'ws_base_url'):
                 http_protocol = "https" if session_info.ws_base_url.startswith("wss:") else "http"
-                # L'URL base per il redirect URI non deve includere /stream
                 host_port_path = session_info.ws_base_url.split("://")[1].split("/stream")[0]
-                REDIRECT_URI = f"{http_protocol}://{host_port_path}/" 
+                REDIRECT_URI = f"{http_protocol}://{host_port_path}/"
             else: 
-                # Fallback per lo sviluppo locale se ws_base_url non è come previsto
-                REDIRECT_URI = "http://localhost:8501/"
+                REDIRECT_URI = "http://localhost:8501/" 
         except Exception:
-             # Fallback robusto per lo sviluppo locale
-             REDIRECT_URI = "http://localhost:8501/"
+             REDIRECT_URI = "http://localhost:8501/" 
         # st.caption(f"DEBUG: OAuth Redirect URI: {REDIRECT_URI}")
-
 
         SCOPES = [
             "openid", "[https://www.googleapis.com/auth/userinfo.email](https://www.googleapis.com/auth/userinfo.email)",
@@ -597,23 +591,22 @@ with st.sidebar:
             )
 
             if 'oauth_token' not in st.session_state or st.session_state.oauth_token is None:
-                result = oauth_component.authorize_button(
+                result = oauth_component.authorize_button( # Rimosso l'argomento 'type'
                     name="Accedi con Google", 
                     icon="[https://www.google.com/favicon.ico](https://www.google.com/favicon.ico)",
-                    redirect_uri=REDIRECT_URI, # Assicurati che questo sia corretto
+                    redirect_uri=REDIRECT_URI,
                     scope=" ".join(SCOPES), 
-                    pkce="S256", # Abilita PKCE
+                    pkce="S256",
                     use_container_width=True
                 )
                 
                 if result and "token" in result:
                     st.session_state.oauth_token = result["token"]
                     try:
-                        # Recupera user info dopo aver ottenuto il token
                         user_info_response = oauth.get_user_info(result["token"], "https://www.googleapis.com/oauth2/v3/userinfo")
                         st.session_state.user_info = user_info_response
-                        st.session_state.credentials_successfully_loaded_by_app = True # Indica che le credenziali sono caricate
-                        on_config_change() # Resetta lo stato di applicazione della configurazione
+                        st.session_state.credentials_successfully_loaded_by_app = True
+                        on_config_change() 
                         st.rerun()
                     except Exception as e_userinfo:
                         st.warning(f"🤖💬 Accesso riuscito, ma impossibile ottenere info utente: {e_userinfo}")
