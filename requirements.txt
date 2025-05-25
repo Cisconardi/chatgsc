@@ -1,11 +1,11 @@
 streamlit
 google-cloud-aiplatform>=1.38.0
 google-cloud-bigquery>=3.0.0
-pandas>=1.0.0
+vertexai>=1.38.0
+pandas>=1.3.0
+matplotlib>=3.0.0
 google-auth>=2.17.0
-google-auth-oauthlib>=1.0.0 # Mantenuto per Credentials, ma non per il flow
-requests-oauthlib # Dipendenza di google-auth-oauthlib
-streamlit-oauth>=0.1.3 # O la versione più recente
-db-dtypes
-matplotlib
-google-cloud-bigquery-storage
+google-auth-oauthlib>=1.0.0
+requests-oauthlib>=1.3.0
+db-dtypes>=1.0.0
+google-cloud-bigquery-storage>=2.0.0 # Consigliato per performance BigQuery
