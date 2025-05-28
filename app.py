@@ -5,10 +5,12 @@ import vertexai # type: ignore
 from vertexai.generative_models import GenerativeModel, Part, GenerationConfig # type: ignore
 import pandas as pd
 import os
-import tempfile
+import tempfile # Mantenuto per la gestione del file JSON
 import json
-import atexit
-import matplotlib.pyplot as plt # Import per i grafici
+import atexit # Mantenuto per la pulizia del file temporaneo
+import matplotlib.pyplot as plt 
+from google.oauth2.credentials import Credentials # Anche se non per OAuth user, utile per type hinting se si estendesse
+import google.auth # Per caricare credenziali da file
 
 # --- Configurazione Pagina Streamlit (DEVE ESSERE IL PRIMO COMANDO STREAMLIT) ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
@@ -18,7 +20,7 @@ st.markdown("""
 <style>
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] p,
     div[data-testid="stChatMessage"][data-testid-user-type="ai"] div[data-testid="stMarkdownContainer"] li {
-        font-size: 1.25em !important; /* Puoi aggiustare 1.25em a tuo piacimento */
+        font-size: 1.25em !important; 
     }
 </style>
 """, unsafe_allow_html=True)
@@ -36,7 +38,6 @@ def _cleanup_temp_creds_file():
         except Exception as e:
             print(f"DEBUG: Errore durante la pulizia del file credenziali temporaneo: {e}")
             pass
-
 atexit.register(_cleanup_temp_creds_file)
 
 def reset_config_and_creds_state():
@@ -50,31 +51,41 @@ def reset_config_and_creds_state():
         except Exception:
             pass
     _temp_gcp_creds_file_path = None
-    st.session_state.credentials_successfully_loaded_by_app = False
-    st.session_state.uploaded_project_id = None
-    st.session_state.last_uploaded_file_id_processed_successfully = None
-    st.session_state.config_applied_successfully = False 
-    st.session_state.table_schema_for_prompt = "" 
-    st.session_state.current_schema_config_key = "" 
-    print("DEBUG: Stato credenziali e configurazione resettato.")
+    
+    keys_to_reset = [
+        'credentials_successfully_loaded_by_app', 'uploaded_project_id', 
+        'last_uploaded_file_id_processed_successfully', 'config_applied_successfully',
+        'table_schema_for_prompt', 'current_schema_config_key', 
+        'gcp_project_id_input'
+    ]
+    for key in keys_to_reset:
+        if key in st.session_state:
+            del st.session_state[key] 
+    initialize_session_state() 
+    print("DEBUG: Stato credenziali e configurazione resettato per SA JSON.")
 
 
 def load_credentials_from_uploaded_file(uploaded_file):
     global _temp_gcp_creds_file_path
-    reset_config_and_creds_state() 
+    # Non chiamare reset_all_auth_states() qui per non perdere l'input del project_id se l'utente ricarica solo il file
+    # La pulizia delle vecchie credenziali avviene all'inizio di questa funzione se necessario.
+
+    if _temp_gcp_creds_file_path and os.path.exists(_temp_gcp_creds_file_path):
+        try: os.remove(_temp_gcp_creds_file_path)
+        except Exception: pass
+    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+        del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+    _temp_gcp_creds_file_path = None
+    st.session_state.credentials_successfully_loaded_by_app = False 
+
 
     if uploaded_file is not None:
         try:
             gcp_sa_json_str = uploaded_file.getvalue().decode("utf-8")
-            
-            try:
-                creds_dict = json.loads(gcp_sa_json_str)
-                st.session_state.uploaded_project_id = creds_dict.get("project_id")
-                if not st.session_state.uploaded_project_id:
-                    st.warning("🤖💬 Il file JSON caricato non contiene un 'project_id'. Sarà necessario inserirlo manualmente.")
-            except json.JSONDecodeError as json_err:
-                st.error(f"🤖💬 Il file caricato non contiene un JSON valido: {json_err}.")
-                return False
+            creds_dict = json.loads(gcp_sa_json_str)
+            st.session_state.uploaded_project_id = creds_dict.get("project_id")
+            if not st.session_state.uploaded_project_id:
+                st.warning("🤖💬 Il file JSON caricato non contiene un 'project_id'. Sarà necessario inserirlo manualmente.")
 
             with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".json") as temp_json_file:
                 temp_json_file.write(gcp_sa_json_str)
@@ -82,112 +93,129 @@ def load_credentials_from_uploaded_file(uploaded_file):
             
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = _temp_gcp_creds_file_path
             print(f"DEBUG: Credenziali caricate da file upload: {_temp_gcp_creds_file_path}")
-            st.session_state.credentials_successfully_loaded_by_app = True
+            st.session_state.credentials_successfully_loaded_by_app = True 
             st.session_state.last_uploaded_file_id_processed_successfully = uploaded_file.file_id
             return True
+        except json.JSONDecodeError as json_err:
+            st.error(f"🤖💬 Il file caricato non contiene un JSON valido: {json_err}.")
         except Exception as e:
             st.error(f"🤖💬 Errore durante il caricamento del file delle credenziali: {e}")
-            reset_config_and_creds_state() 
-            return False
+        
+        # Se c'è un errore, assicurati che lo stato sia pulito
+        if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+            del os.environ["GOOGLE_APPLICATION_CREDENTIALS"]
+        _temp_gcp_creds_file_path = None
+        st.session_state.credentials_successfully_loaded_by_app = False
+        st.session_state.uploaded_project_id = None
+        st.session_state.last_uploaded_file_id_processed_successfully = None
+        return False
     return False
 
 # --- Fine Setup Credenziali GCP ---
 
 # Modello Gemini da utilizzare
-TARGET_GEMINI_MODEL = "gemini-2.0-flash-001" # Per SQL e riassunto
-CHART_GENERATION_MODEL = "gemini-2.0-flash-001" # Puoi usare lo stesso o un altro
+TARGET_GEMINI_MODEL = "gemini-2.0-flash-001" 
+CHART_GENERATION_MODEL = "gemini-2.0-flash-001"
 
-# --- Testo Privacy Policy (dal codice fornito dall'utente) ---
+# --- Testo Privacy Policy (aggiornato per solo SA JSON) ---
 PRIVACY_POLICY_TEXT = """
 **Informativa sulla Privacy per ChatGSC**
 
-**Ultimo aggiornamento:** 23/05/2025
+**Ultimo aggiornamento:** 26 Maggio 2025
 
-**Nota Importante:** Questa applicazione è attualmente in fase di revisione per l'utilizzo dell'autenticazione OAuth 2.0. Per consentire i test e il funzionamento preliminare, l'applicazione utilizza temporaneamente il caricamento di un file JSON di credenziali di un account di servizio Google Cloud. La presente informativa sulla privacy descrive il funzionamento previsto con OAuth 2.0, ma si prega di notare che l'attuale meccanismo di autenticazione è basato su file JSON di account di servizio.
+Benvenuto in ChatGSC! La tua privacy è importante per noi. Questa Informativa sulla Privacy spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le tue informazioni quando utilizzi la nostra applicazione ChatGSC per interagire con i tuoi dati di Google Search Console tramite Google BigQuery e Vertex AI. 
+L'autenticazione per questa applicazione avviene esclusivamente tramite il caricamento di un file JSON di credenziali di un account di servizio Google Cloud.
 
-Benvenuto in ChatGSC! La tua privacy è importante per noi. Questa Informativa sulla Privacy spiega come raccogliamo, utilizziamo, divulghiamo e proteggiamo le tue informazioni quando utilizzi la nostra applicazione ChatGSC per interagire con i tuoi dati di Google Search Console tramite Google BigQuery e Vertex AI, utilizzando l'autenticazione OAuth 2.0 di Google (come previsto per la versione finale).
+**1. Informazioni che Raccogliamo**
 
-**1. Informazioni che Raccogliamo (con OAuth 2.0)**
-
-Quando utilizzi ChatGSC con l'autenticazione OAuth 2.0 (prevista), potremmo raccogliere le seguenti informazioni:
-
-* **Informazioni sull'Account Google:** Quando ti autentichi utilizzando OAuth 2.0, riceviamo informazioni di base dal tuo profilo Google necessarie per stabilire una connessione sicura e per identificarti come utente autorizzato. Questo di solito include il tuo indirizzo email e informazioni di profilo di base. Non memorizziamo la tua password di Google.
-* **Dati di Google Search Console:** Con il tuo esplicito consenso tramite il flusso OAuth 2.0, l'applicazione accederà ai dati del tuo Google Search Console archiviati nel tuo progetto Google BigQuery. Questi dati includono metriche di performance del sito web come query di ricerca, clic, impressioni, CTR, posizione media, URL delle pagine, ecc. L'applicazione legge questi dati solo per rispondere alle tue domande.
-* **Dati di Utilizzo dell'Applicazione (Opzionale):** Potremmo raccogliere informazioni anonime su come utilizzi ChatGSC (es. tipi di domande poste, funzionalità utilizzate) per migliorare l'applicazione. Questi dati sono aggregati e non identificabili personalmente.
-* **Interazioni con l'AI:** Le domande che poni all'AI e le risposte generate vengono processate tramite i servizi di Vertex AI.
-
-**Funzionamento Attuale con File JSON di Account di Servizio:**
-Attualmente, per utilizzare l'app, carichi un file JSON di un account di servizio. Questo file permette all'applicazione di accedere a Google BigQuery e Vertex AI per tuo conto. Il file viene usato per creare una sessione autenticata e non viene memorizzato permanentemente dall'applicazione oltre la sessione di utilizzo.
+* **File di Credenziali dell'Account di Servizio Google Cloud:** Per funzionare, l'applicazione richiede di caricare un file JSON contenente le credenziali di un account di servizio Google Cloud. Questo file contiene informazioni sensibili (come chiavi private) che permettono all'applicazione di agire per conto di tale account di servizio per accedere alle risorse Google Cloud (BigQuery e Vertex AI) specificate nel tuo progetto. **Questo file viene elaborato localmente nel browser o temporaneamente sul server durante l'esecuzione dell'app per impostare l'autenticazione, ma non viene memorizzato in modo persistente dall'applicazione ChatGSC stessa oltre la durata della sessione di utilizzo o la necessità di autenticazione.**
+* **Dati di Google Search Console:** Quando fornisci le credenziali e configuri l'ID del progetto, l'ID del dataset e i nomi delle tabelle, l'applicazione (agendo tramite l'account di servizio) accederà ai dati del tuo Google Search Console archiviati nel tuo progetto Google BigQuery. Questi dati includono metriche di performance del sito web come query di ricerca, clic, impressioni, CTR, posizione media, URL delle pagine, ecc. L'applicazione legge questi dati solo per rispondere alle tue domande.
+* **Interazioni con l'AI:** Le domande che poni all'AI e le risposte generate vengono processate tramite i servizi di Google Cloud Vertex AI, utilizzando l'autenticazione fornita dal tuo account di servizio.
 
 **2. Come Utilizziamo le Tue Informazioni**
 
 Utilizziamo le informazioni raccolte per:
 
-* **Fornire e Personalizzare il Servizio:** Per autenticarti (tramite file JSON nella versione attuale, tramite OAuth 2.0 in futuro), permetterti di interagire con i tuoi dati di Google Search Console, generare query SQL ed elaborare risposte tramite Vertex AI.
-* **Migliorare l'Applicazione:** Per analizzare l'utilizzo e migliorare le funzionalità e l'esperienza utente di ChatGSC.
-* **Comunicazioni (se applicabile):** Per inviarti aggiornamenti importanti sull'applicazione o rispondere a tue richieste di supporto.
+* **Fornire e Personalizzare il Servizio:** Per autenticare l'accesso ai tuoi dati GCP, permetterti di interagire con i tuoi dati di Google Search Console, generare query SQL ed elaborare risposte tramite Vertex AI.
+* **Funzionamento dell'Applicazione:** Il file di credenziali è usato esclusivamente per consentire all'applicazione di effettuare chiamate API autenticate a Google BigQuery e Vertex AI per tuo conto.
 
 **3. Condivisione e Divulgazione delle Informazioni**
 
-Non vendiamo né affittiamo le tue informazioni personali a terzi. Potremmo condividere le tue informazioni solo nelle seguenti circostanze:
+Non vendiamo né affittiamo le tue informazioni o il contenuto del tuo file di credenziali a terzi.
 
-* **Con i Servizi Google Cloud Platform:** Le tue domande e i dati di Search Console vengono processati tramite Google BigQuery e Vertex AI come parte integrante del funzionamento dell'applicazione. L'utilizzo di questi servizi è soggetto alle informative sulla privacy di Google Cloud.
-* **Per Requisiti Legali:** Se richiesto dalla legge o in risposta a validi processi legali (es. un'ordinanza del tribunale).
-* **Con il Tuo Consenso:** Per qualsiasi altra finalità, solo con il tuo esplicito consenso.
+* **Con i Servizi Google Cloud Platform:** Le tue domande e i dati di Search Console vengono processati tramite Google BigQuery e Vertex AI come parte integrante del funzionamento dell'applicazione. L'utilizzo di questi servizi è soggetto alle informative sulla privacy e ai termini di servizio di Google Cloud. L'applicazione ChatGSC agisce come un client di questi servizi.
+* **File di Credenziali:** Il file di credenziali JSON caricato viene utilizzato per creare un file temporaneo sul server dove l'app è in esecuzione, al solo scopo di impostare la variabile d'ambiente `GOOGLE_APPLICATION_CREDENTIALS` per l'autenticazione delle librerie client di Google. Questo file temporaneo viene eliminato al termine della sessione dello script.
+* **Per Requisiti Legali:** Se richiesto dalla legge o in risposta a validi processi legali.
 
 **4. Sicurezza dei Dati**
 
-* **File JSON Account di Servizio (attuale):** È tua responsabilità gestire la sicurezza del file JSON del tuo account di servizio prima di caricarlo. L'applicazione utilizza il file per l'autenticazione durante la sessione. Ti consigliamo di utilizzare account di servizio con i permessi minimi necessari.
-* **OAuth 2.0 (previsto):** Adottiamo misure ragionevoli per proteggere le tue informazioni da accessi non autorizzati, alterazione, divulgazione o distruzione. L'accesso ai tuoi dati di Google Search Console avverrà tramite il protocollo sicuro OAuth 2.0 e i token di accesso saranno gestiti in modo sicuro. Tuttavia, nessuna trasmissione via Internet o metodo di archiviazione elettronica è sicuro al 100%.
+* **File JSON Account di Servizio:** È tua responsabilità gestire la sicurezza del file JSON del tuo account di servizio prima di caricarlo. L'applicazione utilizza il file per l'autenticazione durante la sessione. Ti consigliamo di utilizzare account di servizio con i permessi minimi necessari (principio del privilegio minimo) per le operazioni che ChatGSC deve eseguire.
+* **Trasmissione Dati:** Quando interagisci con l'applicazione, i dati vengono trasmessi tramite protocolli sicuri (HTTPS se l'app è deployata correttamente).
 
 **5. Conservazione dei Dati**
 
-* **File JSON Account di Servizio (attuale):** Il contenuto del file di credenziali viene utilizzato per creare un file temporaneo che persiste solo per la durata dell'esecuzione dello script dell'applicazione. Viene fatto un tentativo di eliminare questo file temporaneo alla chiusura dello script.
-* **Token OAuth (previsto):** Conserviamo i token di accesso OAuth solo per la durata necessaria a mantenere attiva la tua sessione o come consentito da Google.
-* **Dati di Search Console:** Non archiviamo copie permanenti dei tuoi dati di Google Search Console. I dati vengono letti da BigQuery "on-demand" per rispondere alle tue domande.
-* **Cronologia delle Query (se implementata):** Se l'applicazione implementa una cronologia delle query, questa verrà conservata solo per la tua comodità e potrai avere la possibilità di cancellarla.
+* **File di Credenziali Caricato:** Utilizzato temporaneamente per la sessione e poi eliminato.
+* **Dati di Search Console:** Non archiviamo copie permanenti dei tuoi dati di Google Search Console. I dati vengono letti da BigQuery "on-demand".
 
-**6. I Tuoi Diritti**
+**6. I Tuoi Diritti e Responsabilità**
 
-* **File JSON Account di Servizio (attuale):** Hai il controllo sul file JSON del tuo account di servizio e sui permessi IAM ad esso associati.
-* **OAuth 2.0 (previsto):** In base alla tua giurisdizione, potresti avere determinati diritti riguardo alle tue informazioni personali, come il diritto di accedere, correggere o richiedere la cancellazione dei tuoi dati. Puoi revocare in qualsiasi momento l'accesso dell'applicazione ai tuoi dati Google tramite le impostazioni di sicurezza del tuo Account Google.
+* Hai il controllo sul file JSON del tuo account di servizio e sui permessi IAM ad esso associati.
+* Puoi interrompere l'uso dell'applicazione in qualsiasi momento.
 
 **7. Modifiche a Questa Informativa sulla Privacy**
 
-Potremmo aggiornare questa Informativa sulla Privacy di tanto in tanto. Ti informeremo di eventuali modifiche pubblicando la nuova Informativa sulla Privacy sull'applicazione. Ti consigliamo di rivedere periodicamente questa Informativa sulla Privacy per eventuali modifiche.
+Potremmo aggiornare questa Informativa sulla Privacy. Ti informeremo pubblicando la nuova Informativa sull'applicazione.
 
 **8. Contattaci**
 
-Se hai domande su questa Informativa sulla Privacy, contattaci a:
-info@francisconardi o su LinkedIn
+Se hai domande, contattaci a: info@francisconardi o su LinkedIn
 
 ---
-*Nota Importante: Questa è una bozza generica. Dovrai adattarla specificamente alle funzionalità della tua app e assicurarti che sia conforme alle leggi sulla privacy come il GDPR (se applicabile).*
+*Nota Importante: Questa è una bozza generica. Adattala alle funzionalità specifiche della tua app e assicurati che sia conforme alle leggi sulla privacy applicabili.*
 """
 
 # --- Funzioni Core ---
+
+def get_gcp_credentials_object():
+    """Restituisce un oggetto credenziali GCP valido se GOOGLE_APPLICATION_CREDENTIALS è impostato."""
+    if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        try:
+            credentials, _ = google.auth.load_credentials_from_file(os.getenv("GOOGLE_APPLICATION_CREDENTIALS"))
+            return credentials
+        except Exception as e:
+            print(f"DEBUG: Errore nel caricamento delle credenziali SA da file env var: {e}")
+            st.error(f"🤖💬 Errore nel caricare le credenziali dal file JSON: {e}")
+            return None
+    return None
+
+
 def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_str: str) -> str | None:
     if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
         st.error("🤖💬 Le credenziali GCP non sono state caricate. Carica il file JSON e applica la configurazione.")
         return None
-    if not project_id or not dataset_id or not table_names_str:
-        st.error("🤖💬 ID Progetto, ID Dataset e Nomi Tabelle sono necessari per recuperare lo schema.")
+    if not project_id: 
+        st.error("🤖💬 ID Progetto Google Cloud non specificato. Per favore, inseriscilo nella configurazione.")
         return None
-
+    if not dataset_id or not table_names_str:
+        st.error("🤖💬 ID Dataset e Nomi Tabelle sono necessari per recuperare lo schema.")
+        return None
     table_names = [name.strip() for name in table_names_str.split(',') if name.strip()]
     if not table_names:
         st.error("🤖💬 Per favore, fornisci almeno un nome di tabella valido.")
         return None
     
-    try:
-        client = bigquery.Client(project=project_id) 
-    except Exception as e:
-        st.error(f"🤖💬 Impossibile inizializzare il client BigQuery: {e}. Verifica le credenziali e i permessi.")
+    gcp_creds_obj = get_gcp_credentials_object() # Ottieni le credenziali qui
+    if not gcp_creds_obj:
+        st.error("🤖💬 Impossibile ottenere credenziali GCP valide per recuperare lo schema.")
         return None
-        
+
+    try:
+        client = bigquery.Client(project=project_id, credentials=gcp_creds_obj) 
+    except Exception as e:
+        st.error(f"🤖💬 Impossibile inizializzare il client BigQuery: {e}. Verifica le credenziali, i permessi e l'ID Progetto.")
+        return None
     schema_prompt_parts = []
     all_tables_failed = True
-
     for table_name in table_names:
         full_table_id = f"{project_id}.{dataset_id}.{table_name}"
         try:
@@ -197,7 +225,6 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
             for schema_field in table.schema:
                 description = f" (Descrizione: {schema_field.description})" if schema_field.description else ""
                 columns_desc.append(f"  - {schema_field.name} ({schema_field.field_type}){description}")
-            
             schema_prompt_parts.append(
                 f"Tabella: `{full_table_id}`\nColonne:\n" + "\n".join(columns_desc)
             )
@@ -205,29 +232,25 @@ def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_st
         except Exception as e:
             st.warning(f"Impossibile recuperare lo schema per la tabella {full_table_id}: {e}")
             schema_prompt_parts.append(f"# Errore nel recupero schema per tabella: {full_table_id}")
-
     if all_tables_failed and table_names: 
         st.error("Nessuno schema di tabella è stato recuperato con successo. Controlla i nomi delle tabelle, i permessi e la configurazione del progetto.")
         return None
-    
     if not schema_prompt_parts and table_names: 
         st.warning("get_table_schema_for_prompt: schema_prompt_parts è vuoto alla fine, ma c'erano tabelle da processare.")
         return None
-        
     final_schema_prompt = "\n\n".join(schema_prompt_parts)
     return final_schema_prompt
 
-
 def generate_sql_from_question(project_id: str, location: str, model_name: str, question: str, table_schema_prompt: str, few_shot_examples_str: str) -> str | None:
-    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"): 
+    gcp_creds_obj = get_gcp_credentials_object()
+    if not gcp_creds_obj: 
         st.error("🤖💬 Le credenziali GCP non sono state caricate. Impossibile procedere con la generazione SQL.")
         return None
     if not all([project_id, location, model_name, question, table_schema_prompt]):
         st.error("🤖💬 Mancano alcuni parametri per la generazione SQL (progetto, location, modello, domanda, schema).")
         return None
-
     try:
-        vertexai.init(project=project_id, location=location) 
+        vertexai.init(project=project_id, location=location, credentials=gcp_creds_obj) 
         model = GenerativeModel(model_name)
         prompt_parts = [
             "Sei un esperto assistente AI che traduce domande in linguaggio naturale in query SQL per Google BigQuery,",
@@ -272,14 +295,15 @@ def generate_sql_from_question(project_id: str, location: str, model_name: str, 
         return None
 
 def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | None:
-    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    gcp_creds_obj = get_gcp_credentials_object()
+    if not gcp_creds_obj:
         st.error("Le credenziali GCP non sono state caricate. Impossibile procedere con l'esecuzione della query.")
         return None
     if not project_id or not sql_query:
         st.error("🤖💬 ID Progetto e query SQL sono necessari per l'esecuzione su BigQuery.")
         return None
     try:
-        client = bigquery.Client(project=project_id) 
+        client = bigquery.Client(project=project_id, credentials=gcp_creds_obj) 
         query_job = client.query(sql_query)
         results_df = query_job.to_dataframe() 
         return results_df
@@ -288,7 +312,8 @@ def execute_bigquery_query(project_id: str, sql_query: str) -> pd.DataFrame | No
         return None
 
 def summarize_results_with_llm(project_id: str, location: str, model_name: str, results_df: pd.DataFrame, original_question: str) -> str | None:
-    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    gcp_creds_obj = get_gcp_credentials_object()
+    if not gcp_creds_obj:
         st.error("🤖💬 Le credenziali GCP non sono state caricate. Impossibile procedere con il riassunto.")
         return None
     if results_df.empty:
@@ -297,19 +322,16 @@ def summarize_results_with_llm(project_id: str, location: str, model_name: str, 
         st.error("🤖💬 Mancano alcuni parametri per la generazione del riassunto (progetto, location, modello).")
         return None
     try:
-        vertexai.init(project=project_id, location=location) 
+        vertexai.init(project=project_id, location=location, credentials=gcp_creds_obj) 
         model = GenerativeModel(model_name)
         results_sample_text = results_df.head(20).to_string(index=False)
         if len(results_df) > 20:
             results_sample_text += f"\n... e altre {len(results_df)-20} righe."
-        
         prompt = f"""
 Data la seguente domanda dell'utente:
 "{original_question}"
-
 E i seguenti risultati ottenuti da una query SQL (massimo 20 righe mostrate se più lunghe):
 {results_sample_text}
-
 Fornisci un breve riassunto conciso e in linguaggio naturale di questi risultati, rispondendo direttamente alla domanda originale dell'utente.
 Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non significativi, indicalo gentilmente.
 **Importante: Nel tuo riassunto, metti in grassetto (usando la sintassi Markdown `**testo in grassetto**`) i seguenti tipi di informazioni per evidenziarli:**
@@ -330,46 +352,36 @@ Non ripetere la domanda. Sii colloquiale. Se i risultati sono vuoti o non signif
         return "Errore nella generazione del riassunto."
 
 def generate_chart_code_with_llm(project_id: str, location: str, model_name: str, original_question:str, sql_query:str, query_results_df: pd.DataFrame) -> str | None:
-    """Genera codice Python Matplotlib per visualizzare i dati."""
-    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+    gcp_creds_obj = get_gcp_credentials_object()
+    if not gcp_creds_obj:
         st.error("🤖💬 Credenziali GCP non caricate. Impossibile generare codice per il grafico.")
         return None
     if query_results_df.empty:
         st.info("🤖💬 Nessun dato disponibile per generare un grafico.")
         return None
-    
     try:
-        vertexai.init(project=project_id, location=location)
+        vertexai.init(project=project_id, location=location, credentials=gcp_creds_obj)
         model = GenerativeModel(model_name)
-
-        # Prepara un campione dei dati più significativo per il prompt
         if len(query_results_df) > 10:
             data_sample = query_results_df.sample(min(10, len(query_results_df))).to_string(index=False)
         else:
             data_sample = query_results_df.to_string(index=False)
-        
         column_details = []
         for col in query_results_df.columns:
             col_type = str(query_results_df[col].dtype)
             column_details.append(f"- Colonna '{col}' (tipo: {col_type})")
         column_info = "\n".join(column_details)
-
-
         chart_prompt = f"""
 Considerando la domanda originale dell'utente:
 "{original_question}"
-
 E la query SQL eseguita:
 ```sql
 {sql_query}
 ```
-
 I dati restituiti hanno le seguenti colonne e tipi:
 {column_info}
-
 Ecco un campione dei dati (usa il DataFrame completo chiamato 'df' che ti verrà passato nello scope di esecuzione):
 {data_sample}
-
 Genera codice Python **SOLO** usando la libreria Matplotlib per creare un grafico che visualizzi efficacemente questi dati in relazione alla domanda originale.
 Il codice Python generato deve:
 1.  Assumere che `import matplotlib.pyplot as plt` e `import pandas as pd` siano già stati eseguiti.
@@ -389,14 +401,12 @@ Il codice Python generato deve:
 Restituisci SOLO il blocco di codice Python. Non aggiungere spiegazioni o testo introduttivo/conclusivo.
 """
         response = model.generate_content(chart_prompt)
-        
         if response.candidates and response.candidates[0].content.parts:
             code_content = response.candidates[0].content.parts[0].text.strip()
             if code_content.startswith("```python"):
                 code_content = code_content[len("```python"):].strip()
             if code_content.endswith("```"):
                 code_content = code_content[:-len("```")].strip()
-            
             if "# Non è stato possibile generare un grafico significativo" in code_content:
                 st.info(f"🤖💬 AI: {code_content}")
                 return None
@@ -449,33 +459,23 @@ with st.expander(expander_title_text, expanded=False):
     st.write("---")
     st.write("Una volta configurato tutto, potrai fare domande sui tuoi dati!")
 
-# Inizializza st.session_state se non esiste
-if 'uploaded_project_id' not in st.session_state:
-    st.session_state.uploaded_project_id = None
-if 'sql_query' not in st.session_state:
-    st.session_state.sql_query = ""
-if 'query_results' not in st.session_state:
-    st.session_state.query_results = None
-if 'results_summary' not in st.session_state:
-    st.session_state.results_summary = ""
-if 'table_schema_for_prompt' not in st.session_state:
-    st.session_state.table_schema_for_prompt = ""
-if 'last_prompt' not in st.session_state:
-    st.session_state.last_prompt = ""
-if 'current_schema_config_key' not in st.session_state:
-    st.session_state.current_schema_config_key = ""
-if 'credentials_successfully_loaded_by_app' not in st.session_state:
-    st.session_state.credentials_successfully_loaded_by_app = False
-if 'last_uploaded_file_id_processed_successfully' not in st.session_state: 
-    st.session_state.last_uploaded_file_id_processed_successfully = None
-if 'config_applied_successfully' not in st.session_state: 
-    st.session_state.config_applied_successfully = False
-if 'show_privacy_policy' not in st.session_state: 
-    st.session_state.show_privacy_policy = False
-if 'user_question_from_button' not in st.session_state: 
-    st.session_state.user_question_from_button = ""
-if 'submit_from_preset_button' not in st.session_state: 
-    st.session_state.submit_from_preset_button = False
+# Inizializza st.session_state
+def initialize_session_state():
+    default_session_state = {
+        'uploaded_project_id': None, 'sql_query': "", 'query_results': None,
+        'results_summary': "", 'table_schema_for_prompt': "", 'last_prompt': "",
+        'current_schema_config_key': "", 'credentials_successfully_loaded_by_app': False,
+        'last_uploaded_file_id_processed_successfully': None, 
+        'config_applied_successfully': False, 'show_privacy_policy': False,
+        'user_question_from_button': "", 'submit_from_preset_button': False,
+        'gcp_project_id_input': "example-project-id",
+        'enable_chart_generation': False
+    }
+    for key, value in default_session_state.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
+
+initialize_session_state()
 
 
 def on_config_change():
@@ -484,32 +484,31 @@ def on_config_change():
     print("DEBUG: Configurazione cambiata, config_applied_successfully resettato.")
 
 
+# --- Sidebar ---
 with st.sidebar:
     st.header("⚙️ Configurazione")
-
+    
     st.subheader("1. Carica File Credenziali GCP (JSON)")
     uploaded_credential_file = st.file_uploader(
         "Seleziona il file JSON della chiave del tuo account di servizio GCP", 
         type="json", 
-        key="credential_uploader",
+        key="credential_uploader_sa", # Chiave univoca per il file uploader
         on_change=on_config_change 
     )
 
     if uploaded_credential_file is not None:
-        current_file_unique_id = uploaded_credential_file.file_id
-        if st.session_state.last_uploaded_file_id_processed_successfully != current_file_unique_id or \
+        # Processa il file solo se è un nuovo file o se le credenziali non sono già state caricate con successo
+        if st.session_state.last_uploaded_file_id_processed_successfully != uploaded_credential_file.file_id or \
            not st.session_state.credentials_successfully_loaded_by_app:
-            if load_credentials_from_uploaded_file(uploaded_credential_file):
-                st.session_state.credentials_successfully_loaded_by_app = True
-                st.session_state.last_uploaded_file_id_processed_successfully = current_file_unique_id 
-                st.rerun() 
-            else:
-                st.session_state.credentials_successfully_loaded_by_app = False
-    elif uploaded_credential_file is None and st.session_state.credentials_successfully_loaded_by_app:
-        print("DEBUG: File uploader svuotato, resetto stato credenziali.")
-        reset_config_and_creds_state() 
+            if load_credentials_from_service_account_file(uploaded_credential_file):
+                st.session_state.gcp_project_id_input = st.session_state.uploaded_project_id or "example-project-id"
+                st.rerun() # Rerun per aggiornare il valore di gcp_project_id e lo stato
+            # else: l'errore è già mostrato da load_credentials_from_service_account_file
+    elif uploaded_credential_file is None and st.session_state.credentials_successfully_loaded_by_app: 
+        # Se il file viene rimosso dopo essere stato caricato
+        reset_config_and_creds_state() # Resetta tutto, incluse le credenziali caricate
         st.rerun()
-
+    
     if st.session_state.credentials_successfully_loaded_by_app:
         st.success("🤖💬 Credenziali GCP caricate.")
     else:
@@ -518,11 +517,16 @@ with st.sidebar:
     st.divider()
     st.subheader("2. Parametri Query")
     
+    # Usa il project_id da session_state se caricato dal JSON, altrimenti il default
     default_project_id = st.session_state.get('uploaded_project_id', "example-project-id")
     gcp_project_id = st.text_input("ID Progetto Google Cloud", 
                                    value=default_project_id, 
                                    help="ID progetto GCP. Precompilato dal JSON se possibile.",
-                                   on_change=on_config_change)
+                                   on_change=on_config_change,
+                                   key="gcp_project_id_input_field") # Chiave per l'input text
+    st.session_state.gcp_project_id_input = gcp_project_id # Aggiorna lo stato se modificato manualmente
+
+
     gcp_location = st.text_input("Location Vertex AI", "europe-west1", 
                                  help="Es. us-central1. Modello deve essere disponibile qui.",
                                  on_change=on_config_change)
@@ -541,9 +545,11 @@ with st.sidebar:
     few_shot_examples = "" 
 
     st.divider() 
-    # Nuova Checkbox per generazione grafico
-    enable_chart_generation = st.checkbox("📊 Crea grafico con AI", value=False, on_change=on_config_change, key="enable_chart")
-    st.session_state.enable_chart_generation = enable_chart_generation # Assicura che lo stato sia aggiornato
+    enable_chart_generation = st.checkbox("📊 Crea grafico con AI", 
+                                          value=st.session_state.get('enable_chart_generation', False), 
+                                          on_change=on_config_change, 
+                                          key="enable_chart")
+    st.session_state.enable_chart_generation = enable_chart_generation 
 
     st.divider() 
     st.markdown("⚠️ **Nota sui Costi:** L'utilizzo di questa applicazione comporta chiamate alle API di Google Cloud Platform (Vertex AI, BigQuery) che sono soggette a costi. Assicurati di comprendere e monitorare i [prezzi di GCP](https://cloud.google.com/pricing).", unsafe_allow_html=True)
@@ -559,7 +565,9 @@ with st.sidebar:
         if not gcp_project_id:
             st.error("🤖💬 ID Progetto Google Cloud è obbligatorio.")
             all_fields_filled = False
-        # ... (altri controlli campi obbligatori)
+        if not gcp_location: st.error("🤖💬 Location Vertex AI è obbligatoria."); all_fields_filled = False
+        if not bq_dataset_id: st.error("🤖💬 ID Dataset BigQuery è obbligatorio."); all_fields_filled = False
+        if not bq_table_names_str: st.error("🤖💬 Nomi Tabelle GSC sono obbligatori."); all_fields_filled = False
         
         if all_fields_filled:
             st.session_state.config_applied_successfully = True
@@ -639,6 +647,9 @@ if question_to_process:
     elif not st.session_state.table_schema_for_prompt: 
         st.error("🤖💬 Lo schema delle tabelle non è disponibile. Verifica la configurazione e i permessi, poi riapplica la configurazione.")
     else:
+        active_gcp_project_id = gcp_project_id 
+        active_gcp_location = gcp_location 
+
         st.session_state.sql_query = ""
         st.session_state.query_results = None
         st.session_state.results_summary = ""
@@ -647,7 +658,7 @@ if question_to_process:
 
         with st.spinner(f"🤖💬 Sto pensando (usando {llm_model_name_to_use}) e generando la query SQL per: \"{question_to_process}\""):
             st.session_state.sql_query = generate_sql_from_question(
-                gcp_project_id, gcp_location, llm_model_name_to_use, question_to_process, 
+                active_gcp_project_id, active_gcp_location, llm_model_name_to_use, question_to_process, 
                 st.session_state.table_schema_for_prompt, few_shot_examples 
             )
 
@@ -656,7 +667,7 @@ if question_to_process:
                 st.subheader("Query SQL Generata:")
                 st.code(st.session_state.sql_query, language='sql')
             
-                st.session_state.query_results = execute_bigquery_query(gcp_project_id, st.session_state.sql_query)
+                st.session_state.query_results = execute_bigquery_query(active_gcp_project_id, st.session_state.sql_query)
 
                 if st.session_state.query_results is not None:
                     st.subheader("Risultati Grezzi dalla Query (Primi 200):")
@@ -670,7 +681,7 @@ if question_to_process:
             if st.session_state.query_results is not None:
                 with st.spinner(f"🤖💬 Sto generando un riassunto dei risultati (usando {llm_model_name_to_use})..."):
                     st.session_state.results_summary = summarize_results_with_llm(
-                        gcp_project_id, gcp_location, llm_model_name_to_use, 
+                        active_gcp_project_id, active_gcp_location, llm_model_name_to_use, 
                         st.session_state.query_results, question_to_process
                     )
                 
@@ -683,13 +694,15 @@ if question_to_process:
                     st.warning("🤖💬 Non è stato possibile generare un riassunto, ma la query ha prodotto risultati (vedi dettagli tecnici).")
 
                 # --- SEZIONE GENERAZIONE GRAFICO ---
-                if st.session_state.get('enable_chart_generation', False) and not st.session_state.query_results.empty:
+                if st.session_state.get('enable_chart_generation', False) and \
+                   st.session_state.query_results is not None and \
+                   not st.session_state.query_results.empty:
                     st.markdown("---")
                     st.subheader("📊 Visualizzazione Grafica (Beta)")
                     with st.spinner("🤖💬 Sto generando il codice per il grafico..."):
                         chart_code = generate_chart_code_with_llm(
-                            gcp_project_id, 
-                            gcp_location, 
+                            active_gcp_project_id, 
+                            active_gcp_location, 
                             CHART_GENERATION_MODEL,
                             question_to_process, 
                             st.session_state.sql_query, 
@@ -702,7 +715,7 @@ if question_to_process:
                                 "plt": plt, 
                                 "pd": pd, 
                                 "df": st.session_state.query_results.copy(),
-                                "fig": None # Per recuperare la figura generata
+                                "fig": None 
                             }
                             exec(chart_code, exec_scope)
                             fig_generated = exec_scope.get("fig")
@@ -717,7 +730,7 @@ if question_to_process:
                             st.error(f"🤖💬 Errore durante l'esecuzione del codice del grafico: {e}")
                             with st.expander("Vedi codice grafico generato (che ha causato l'errore)"):
                                 st.code(chart_code, language="python")
-                    elif st.session_state.enable_chart_generation:
+                    elif st.session_state.enable_chart_generation: 
                         st.warning("🤖💬 Non è stato possibile generare il codice per il grafico.")
                 # --- FINE SEZIONE GENERAZIONE GRAFICO ---
         else:
@@ -749,11 +762,12 @@ with right_footer_col:
 
 if st.session_state.get('show_privacy_policy', False):
     st.subheader("Informativa sulla Privacy per ChatGSC")
-    # Utilizza un container con altezza definita per permettere lo scrolling se il testo è lungo
-    # Nota: lo styling diretto dell'altezza del container markdown è limitato.
-    # Per uno scroll vero e proprio dentro un modale, st.dialog (Streamlit >= 1.33) sarebbe meglio.
-    # Questa è una visualizzazione semplice.
-    st.markdown(f"<div style='height: 400px; overflow-y: auto; border: 1px solid #ccc; padding:10px;'>{PRIVACY_POLICY_TEXT.replace('**', '<b>').replace('\n', '<br>')}</div>", unsafe_allow_html=True)
+    privacy_container = st.container()
+    with privacy_container: 
+        privacy_html = PRIVACY_POLICY_TEXT.replace('**', '<b>').replace('\n', '<br>')
+        if privacy_html.endswith('<br>'):
+            privacy_html = privacy_html[:-4]
+        st.markdown(f"<div style='height: 400px; overflow-y: auto; border: 1px solid #ccc; padding:10px;'>{privacy_html}</div>", unsafe_allow_html=True)
     if st.button("Chiudi Informativa", key="close_privacy_policy_main_area"):
         st.session_state.show_privacy_policy = False
-        st.rerun() 
+        st.rerun()
