@@ -62,14 +62,51 @@ TARGET_GEMINI_MODEL = "gemini-2.0-flash-001"
 CHART_GENERATION_MODEL = "gemini-2.0-flash-001"
 
 # --- Gestione Autenticazione OAuth ---
+# --- Gestione Autenticazione OAuth ---
+def handle_oauth_callback():
+    """Gestisce il callback OAuth e completa l'autenticazione"""
+    # Controlla se ci sono parametri di callback nella URL
+    query_params = st.query_params
+    
+    if 'code' in query_params:
+        auth_code = query_params['code']
+        try:
+            # Scambia il codice di autorizzazione con i token
+            response = supabase.auth.exchange_code_for_session({
+                "auth_code": auth_code
+            })
+            
+            if response.session:
+                st.session_state.authenticated = True
+                st.session_state.user_email = response.session.user.email if response.session.user else "Unknown"
+                st.session_state.access_token = response.session.access_token
+                st.session_state.refresh_token = response.session.refresh_token
+                
+                # Pulisci i parametri dalla URL
+                st.query_params.clear()
+                st.success("✅ Login completato con successo!")
+                st.rerun()
+            else:
+                st.error("❌ Errore durante il completamento del login")
+        except Exception as e:
+            st.error(f"❌ Errore nel callback OAuth: {e}")
+    
+    elif 'error' in query_params:
+        error_description = query_params.get('error_description', 'Errore sconosciuto')
+        st.error(f"❌ Errore di autenticazione: {error_description}")
+        st.query_params.clear()
+
 def handle_oauth_login():
     """Gestisce il login OAuth con Google tramite Supabase"""
     try:
-        # Redirect URL per OAuth (dovrà essere configurato in Supabase)
-        redirect_url = f"{st.secrets.get('app_url', 'http://localhost:8501')}/auth/callback"
+        # URL di redirect basato sull'ambiente
+        if "localhost" in st.secrets.get("app_url", ""):
+            redirect_url = "http://localhost:8501"
+        else:
+            redirect_url = st.secrets.get("app_url", "https://chatgsc.streamlit.app")
         
         # Genera URL di login OAuth
-        auth_url = supabase.auth.sign_in_with_oauth({
+        auth_response = supabase.auth.sign_in_with_oauth({
             "provider": "google",
             "options": {
                 "redirect_to": redirect_url,
@@ -77,7 +114,7 @@ def handle_oauth_login():
             }
         })
         
-        return auth_url.url
+        return auth_response.url
     except Exception as e:
         st.error(f"Errore durante la generazione dell'URL di login: {e}")
         return None
@@ -414,6 +451,9 @@ Restituisci SOLO il codice Python.
 st.title("Ciao, sono ChatGSC 🤖💬")
 st.caption("Fammi una domanda sui tuoi dati di Google Search Console. La mia AI la tradurrà in SQL e ti risponderò!")
 
+# --- Gestione Callback OAuth (DEVE essere prima di tutto) ---
+handle_oauth_callback()
+
 # --- Controllo Autenticazione ---
 # Verifica se l'utente è autenticato
 if not check_authentication():
@@ -434,8 +474,12 @@ with st.sidebar:
         if st.button("🔑 Accedi con Google", key="login_button", help="Login OAuth con Google"):
             auth_url = handle_oauth_login()
             if auth_url:
-                st.markdown(f"[🔗 Clicca qui per accedere]({auth_url})")
-                st.info("Clicca il link sopra per completare il login OAuth")
+                st.markdown(f"""
+                <script>
+                    window.open('{auth_url}', '_self');
+                </script>
+                """, unsafe_allow_html=True)
+                st.info("🔄 Reindirizzamento in corso...")
         
         st.markdown("---")
         st.subheader("ℹ️ Come funziona")
