@@ -162,7 +162,8 @@ class GSCDirectMode:
                 max_completion_tokens=1024,
             )
 
-            answer = response["choices"][0]["message"]["content"].strip()
+            answer = response.choices[0].message.content.strip()
+
             if not answer:
                 return self._generate_basic_analysis(question, df)
             return answer
@@ -264,7 +265,7 @@ Restituisci SOLO il codice Python.
                 max_completion_tokens=512,
             )
 
-            code_content = response["choices"][0]["message"]["content"].strip()
+            code_content = response.choices[0].message.content.strip()
             if not code_content:
                 return self._generate_basic_chart_code(df)
 
