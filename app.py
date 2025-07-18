@@ -5,7 +5,6 @@ import atexit
 import requests
 import json
 from urllib.parse import urlencode, urlparse, parse_qs
-from supabase import create_client, Client
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -53,24 +52,20 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Configurazione Supabase ---
+# --- Configurazione Auth0 ---
 try:
-    SUPABASE_URL = st.secrets["SUPABASE_URL"]
-    SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
+    AUTH0_DOMAIN = st.secrets["auth0_domain"]
+    AUTH0_CLIENT_ID = st.secrets["auth0_client_id"]
+    AUTH0_CLIENT_SECRET = st.secrets["auth0_client_secret"]
 except KeyError as e:
     st.error(f"🔑 Configurazione mancante: {e}")
-    st.error("Per favore configura i secrets SUPABASE_URL e SUPABASE_ANON_KEY in Streamlit Cloud.")
+    st.error("Per favore configura auth0_domain, auth0_client_id e auth0_client_secret in Streamlit Cloud.")
     st.stop()
 
 # URL dell'applicazione per i redirect OAuth
 APP_URL = st.secrets.get("app_url", "https://chatgsc.streamlit.app")
 
-# Inizializza client Supabase
-@st.cache_resource
-def init_supabase():
-    return create_client(SUPABASE_URL, SUPABASE_ANON_KEY)
 
-supabase: Client = init_supabase()
 
 # --- Gestione Autenticazione OAuth ---
 def setup_service_account(uploaded_file):
@@ -258,108 +253,63 @@ def exchange_direct_oauth_code(auth_code):
     except Exception as e:
         st.error(f"❌ Errore nello scambio OAuth diretto: {e}")
 
-def get_google_provider_token():
-    """Ottiene il token Google direttamente dal provider Supabase"""
-    try:
-        # Ottieni la sessione corrente
-        session = supabase.auth.get_session()
-        if not session:
-            return None, None
-            
-        # Usa l'API Supabase per ottenere i provider tokens
-        headers = {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': f'Bearer {session.access_token}',
-            'Content-Type': 'application/json'
-        }
-        
-        # Endpoint per ottenere i provider tokens (non sempre disponibile pubblicamente)
-        response = requests.get(
-            f"{SUPABASE_URL}/auth/v1/user",
-            headers=headers
-        )
-        
-        if response.status_code == 200:
-            user_data = response.json()
-            
-            # Cerca nelle identities il provider Google
-            identities = user_data.get('identities', [])
-            for identity in identities:
-                if identity.get('provider') == 'google':
-                    # Cerca i token nel metadata o nell'identity
-                    provider_token = identity.get('access_token')
-                    provider_refresh_token = identity.get('refresh_token')
-                    
-                    if provider_token:
-                        return provider_token, provider_refresh_token
-        
-        return None, None
-        
-    except Exception as e:
-        st.error(f"Errore nell'ottenere i token Google: {e}")
-        return None, None
-
-def handle_oauth_callback():
-    """Gestisce il callback OAuth e completa l'autenticazione"""
+def handle_auth0_callback():
+    """Gestisce il callback OAuth di Auth0 e completa l'autenticazione"""
     query_params = get_query_params()
-    
+
     if 'code' in query_params:
         auth_code = query_params['code']
         st.info("🔄 Completamento autenticazione in corso...")
-        
+
         try:
-            response = supabase.auth.exchange_code_for_session({
-                "auth_code": auth_code
-            })
-            
-            if response.session and response.session.access_token:
-                # Salva dati di sessione base
+            token_url = f"https://{AUTH0_DOMAIN}/oauth/token"
+            data = {
+                'grant_type': 'authorization_code',
+                'client_id': AUTH0_CLIENT_ID,
+                'client_secret': AUTH0_CLIENT_SECRET,
+                'code': auth_code,
+                'redirect_uri': APP_URL
+            }
+
+            response = requests.post(token_url, data=data)
+
+            if response.status_code == 200:
+                tokens = response.json()
+                st.session_state.access_token = tokens.get('access_token')
+                st.session_state.refresh_token = tokens.get('refresh_token')
                 st.session_state.authenticated = True
-                st.session_state.user_email = response.session.user.email if response.session.user else "Unknown"
-                st.session_state.supabase_token = response.session.access_token
-                
-                # Prova a ottenere i token Google specifici
-                google_token, google_refresh = get_google_provider_token()
-                
-                if google_token:
-                    st.session_state.access_token = google_token
-                    st.session_state.refresh_token = google_refresh
-                    st.success("✅ Token Google ottenuti correttamente!")
-                else:
-                    # Fallback ai token Supabase
-                    st.session_state.access_token = response.session.access_token
-                    st.session_state.refresh_token = response.session.refresh_token
-                    st.warning("⚠️ Usando token Supabase come fallback")
-                
-                # Test credenziali
+
+                # Recupera email utente
+                userinfo_url = f"https://{AUTH0_DOMAIN}/userinfo"
+                headers = {"Authorization": f"Bearer {tokens.get('access_token')}"}
+                userinfo = requests.get(userinfo_url, headers=headers).json()
+                st.session_state.user_email = userinfo.get('email', 'Unknown')
+
                 test_success = test_google_credentials()
-                
-                # Pulisci URL e stato
+
                 clear_query_params()
                 if hasattr(st.session_state, 'auth_url'):
                     del st.session_state.auth_url
-                
+
                 if test_success:
                     st.success("✅ Login e verifica credenziali Google completati!")
                     st.session_state.credentials_verified = True
                 else:
                     st.warning("⚠️ Login completato ma credenziali Google non funzionano")
                     st.session_state.credentials_verified = False
-                
+
                 time.sleep(1)
                 st.rerun()
             else:
-                st.error("❌ Errore durante il completamento del login: Sessione non valida")
+                st.error(f"❌ Errore durante il completamento del login: {response.text}")
                 clear_query_params()
-                
         except Exception as e:
             st.error(f"❌ Errore nel callback OAuth: {e}")
-            # In caso di errore, pulisci tutto
             clear_query_params()
             st.session_state.authenticated = False
             if hasattr(st.session_state, 'auth_url'):
                 del st.session_state.auth_url
-    
+
     elif 'error' in query_params:
         error_description = query_params.get('error_description', 'Errore sconosciuto')
         st.error(f"❌ Errore di autenticazione: {error_description}")
@@ -387,24 +337,16 @@ def test_google_credentials():
         st.error(f"Test credenziali Google fallito: {e}")
         return False
 
-def handle_oauth_login():
-    """Gestisce il login OAuth con Google tramite Supabase"""
+def handle_auth0_login():
+    """Genera l'URL di login OAuth tramite Auth0"""
     try:
-        redirect_url = APP_URL
-        
-        auth_response = supabase.auth.sign_in_with_oauth({
-            "provider": "google",
-            "options": {
-                "redirect_to": redirect_url,
-                "scopes": "openid email profile https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/cloud-platform.read-only",
-                "query_params": {
-                    "access_type": "offline",
-                    "prompt": "consent"
-                }
-            }
-        })
-        
-        return auth_response.url
+        params = {
+            'client_id': AUTH0_CLIENT_ID,
+            'response_type': 'code',
+            'redirect_uri': APP_URL,
+            'scope': 'openid email profile offline_access https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/cloud-platform.read-only'
+        }
+        return f"https://{AUTH0_DOMAIN}/authorize?{urlencode(params)}"
     except Exception as e:
         st.error(f"Errore durante la generazione dell'URL di login: {e}")
         return None
@@ -415,28 +357,13 @@ def check_authentication():
     if st.session_state.get('authenticated', False) and st.session_state.get('access_token'):
         return True
     
-    # Poi controlla la sessione Supabase
-    try:
-        session = supabase.auth.get_session()
-        
-        if session and session.access_token:
-            st.session_state.authenticated = True
-            st.session_state.user_email = session.user.email if session.user else "Unknown"
-            st.session_state.access_token = session.access_token
-            st.session_state.refresh_token = session.refresh_token
-            return True
-    except Exception as e:
-        # Se c'è un errore nel recupero della sessione, considera non autenticato
-        st.session_state.authenticated = False
-    
     return False
 
 def logout():
     """Effettua il logout dell'utente"""
     try:
-        supabase.auth.sign_out()
         # Reset session state
-        for key in ['authenticated', 'user_email', 'access_token', 'refresh_token', 
+        for key in ['authenticated', 'user_email', 'access_token', 'refresh_token',
                    'gsc_sites_data', 'selected_project_id', 'config_applied_successfully',
                    'analysis_mode', 'gsc_config', 'gsc_data']:
             if key in st.session_state:
@@ -587,7 +514,7 @@ PRIVACY_POLICY_TEXT = """
 
 **Ultimo aggiornamento:** Gennaio 2025
 
-Questa applicazione utilizza l'autenticazione OAuth 2.0 tramite Supabase per accedere ai tuoi dati di Google Search Console.
+Questa applicazione utilizza l'autenticazione OAuth 2.0 tramite Auth0 per accedere ai tuoi dati di Google Search Console.
 
 **Dati Raccolti:**
 - Informazioni di base del profilo Google (email)
@@ -624,7 +551,7 @@ def main():
     st.caption("Fammi una domanda sui tuoi dati di Google Search Console. La mia AI la tradurrà e ti risponderò!")
 
     # Gestione callback OAuth
-    handle_oauth_callback()
+    handle_auth0_callback()
 
     # Controllo autenticazione
     if not check_authentication():
@@ -644,7 +571,7 @@ def main():
             """, unsafe_allow_html=True)
             
             if st.button("🔑 Accedi con Google", key="login_button", help="Login OAuth con Google"):
-                auth_url = handle_oauth_login()
+                auth_url = handle_auth0_login()
                 if auth_url:
                     st.session_state.auth_url = auth_url
                     st.rerun()
@@ -678,22 +605,22 @@ def main():
                 
                 Il problema può essere dovuto a:
                 
-                **1. Configurazione Supabase → Google:**
-                - Authentication → Providers → Google
-                - Assicurati che "Enable Google provider" sia ON
+                **1. Configurazione Auth0 → Google:**
+                - Authentication → Social → Google
+                - Assicurati che "Enable" sia attivo
                 - Verifica Client ID e Client Secret corretti
                 - Copia il "Callback URL" e aggiungilo in Google Cloud Console
                 
                 **2. Google Cloud Console:**
                 - API & Services → Credentials
-                - OAuth 2.0 Client deve avere Supabase callback URL
+                - OAuth 2.0 Client deve avere il callback URL di Auth0
                 - Google Search Console API deve essere abilitata
                 
                 **3. Provider Token Access:**
-                - Supabase potrebbe non esporre i token Google
+                - Auth0 potrebbe non esporre i token Google
                 - In questo caso, usa "OAuth Diretto Google" sopra
                 
-                **4. Scope OAuth in Supabase:**
+                **4. Scope OAuth in Auth0:**
                 ```
                 openid email profile https://www.googleapis.com/auth/webmasters.readonly
                 ```
@@ -733,19 +660,18 @@ Client ID attuale: {st.secrets.get('google_oauth_client_id', 'NON CONFIGURATO')}
                     st.markdown("Questi URI DEVONO essere configurati:")
                     st.code(f"""
 {APP_URL}
-https://yitqdfdkeljllaplfgar.supabase.co/auth/v1/callback
+https://{AUTH0_DOMAIN}/callback
 """)
                     
                     st.markdown("**3. API abilitate in Google Cloud Console:**")
                     st.markdown("- ✅ Google Search Console API")
                     st.markdown("- ✅ Google+ API (legacy, ma a volte necessaria)")
                     
-                    st.markdown("**4. Configurazione Supabase:**")
-                    st.markdown("Dashboard → Authentication → Providers → Google:")
+                    st.markdown("**4. Configurazione Auth0:**")
+                    st.markdown("Dashboard → Applications → Settings:")
                     st.code(f"""
-Client ID: {st.secrets.get('google_oauth_client_id', 'NON CONFIGURATO')}
-Client Secret: {'CONFIGURATO' if st.secrets.get('google_oauth_client_secret') else 'NON CONFIGURATO'}
-Additional Scopes: openid email profile https://www.googleapis.com/auth/webmasters.readonly
+Domain: {AUTH0_DOMAIN}
+Client ID: {AUTH0_CLIENT_ID}
 """)
                 
                 with st.expander("🛠️ Test Manuale Credenziali", expanded=False):
@@ -840,7 +766,7 @@ Additional Scopes: openid email profile https://www.googleapis.com/auth/webmaste
             
             # Pulsante per approccio OAuth diretto
             if st.button("🌐 Prova OAuth Diretto Google", key="direct_oauth"):
-                st.info("🔧 **OAuth Diretto**: Questa opzione bypassa Supabase e usa OAuth Google diretto")
+                st.info("🔧 **OAuth Diretto**: Questa opzione bypassa Auth0 e usa OAuth Google diretto")
                 
                 # Genera URL OAuth diretto
                 google_oauth_url = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -874,10 +800,6 @@ Additional Scopes: openid email profile https://www.googleapis.com/auth/webmaste
                 st.session_state.access_token = None
                 st.session_state.refresh_token = None
                 st.session_state.credentials_verified = False
-                try:
-                    supabase.auth.sign_out()
-                except:
-                    pass
                 st.info("Effettua nuovamente il login per risolvere i problemi di credenziali.")
                 st.rerun()
             

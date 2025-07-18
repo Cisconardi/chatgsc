@@ -8,8 +8,7 @@ Il progetto è ora organizzato in moduli separati per una migliore manutenibilit
 chatgsc/
 ├── app.py                 # File principale dell'applicazione
 ├── gsc_direct.py         # Modalità Google Search Console Diretta
-├── bigquery_mode.py      # Modalità BigQuery Avanzata  
-├── config.py             # Configurazioni e utility
+├── bigquery_mode.py      # Modalità BigQuery Avanzata
 ├── requirements.txt      # Dipendenze Python
 └── README.md            # Documentazione
 ```
@@ -19,7 +18,7 @@ chatgsc/
 ### `app.py` - File Principale
 - **Funzione**: Entry point dell'applicazione
 - **Responsabilità**:
-  - Configurazione Streamlit e Supabase
+  - Configurazione Streamlit e Auth0
   - Gestione autenticazione OAuth
   - Coordinamento tra le modalità
   - UI principale e sidebar
@@ -41,14 +40,6 @@ chatgsc/
   - Schema tabelle dinamico
   - Analisi potenti con aggregazioni
 
-### `config.py` - Configurazioni
-- **Funzione**: Configurazioni centrali e utility
-- **Contenuto**:
-  - Costanti globali
-  - Modelli AI utilizzati
-  - Domande preimpostate
-  - Funzioni helper
-  - Validazioni
 
 ## 🚀 Come Eseguire
 
@@ -58,12 +49,13 @@ pip install -r requirements.txt
 ```
 
 ### 2. Configurazione Secrets
-Crea il file `.streamlit/secrets.toml`:
+Copia e rinomina `/.streamlit/secrets.toml.example` in `.streamlit/secrets.toml` e modifica i valori:
 ```toml
-SUPABASE_URL = "https://your-project.supabase.co"
-SUPABASE_ANON_KEY = "your-anon-key"
-google_oauth_client_id = "your-client-id"
-google_oauth_client_secret = "your-client-secret"
+auth0_domain = "your-domain.auth0.com"
+auth0_client_id = "your-client-id"
+auth0_client_secret = "your-client-secret"
+google_oauth_client_id = "your-google-client-id"
+google_oauth_client_secret = "your-google-client-secret"
 app_url = "https://your-app-url.streamlit.app"
 ```
 
@@ -74,12 +66,12 @@ streamlit run app.py
 
 ## 🔧 Configurazione
 
-### Supabase Setup
-1. Crea progetto su [Supabase](https://supabase.com)
-2. Abilita Google OAuth Provider
-3. Configura redirect URLs:
+### Auth0 Setup
+1. Crea tenant su [Auth0](https://auth0.com)
+2. Crea un'applicazione di tipo "Regular Web"
+3. Abilita il provider Google e configura i redirect URLs:
    - `https://your-app-url.streamlit.app`
-4. Copia URL e anon key nei secrets
+4. Copia dominio, client ID e client secret nei secrets
 
 ### Google Cloud Setup
 1. Crea progetto su [Google Cloud Console](https://console.cloud.google.com)
@@ -88,7 +80,7 @@ streamlit run app.py
    - BigQuery API (per modalità avanzata)
    - Vertex AI API (per modalità avanzata)
 3. Crea OAuth 2.0 Client ID
-4. Aggiungi redirect URI di Supabase
+4. Aggiungi il redirect URI di Auth0
 
 ## 📊 Modalità di Utilizzo
 
@@ -120,7 +112,7 @@ streamlit run app.py
 
 ### Flusso Autenticazione
 ```
-User → Google OAuth → Supabase → App
+User → Google OAuth → Auth0 → App
 ```
 
 ### Modalità GSC Diretta
@@ -166,7 +158,7 @@ User Question → AI → SQL → BigQuery → DataFrame → AI Summary → Respo
 
 **"Authentication failed"**
 - ✅ Verifica configurazione OAuth in Google Cloud
-- ✅ Controlla redirect URI in Supabase
+- ✅ Controlla redirect URI in Auth0
 - ✅ Verifica secrets Streamlit
 
 **"BigQuery permission denied"**
@@ -182,7 +174,7 @@ User Question → AI → SQL → BigQuery → DataFrame → AI Summary → Respo
 ### Logs e Debug
 - 🔍 Streamlit Cloud: Manage app → Logs
 - 🔍 Browser: F12 → Console per errori JS
-- 🔍 Supabase: Dashboard → Logs per OAuth
+- 🔍 Auth0 Dashboard → Logs per OAuth
 
 ## 📝 TODO / Roadmap
 
