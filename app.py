@@ -52,16 +52,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Configurazione Auth0 ---
-try:
-    AUTH0_DOMAIN = st.secrets["auth0_domain"]
-    AUTH0_CLIENT_ID = st.secrets["auth0_client_id"]
-    AUTH0_CLIENT_SECRET = st.secrets["auth0_client_secret"]
-except KeyError as e:
-    st.error(f"🔑 Configurazione mancante: {e}")
-    st.error("Per favore configura auth0_domain, auth0_client_id e auth0_client_secret in Streamlit Cloud.")
-    st.stop()
-
 # URL dell'applicazione per i redirect OAuth
 APP_URL = st.secrets.get("app_url", "https://chatgsc.streamlit.app")
 
@@ -253,65 +243,20 @@ def exchange_direct_oauth_code(auth_code):
     except Exception as e:
         st.error(f"❌ Errore nello scambio OAuth diretto: {e}")
 
-def handle_auth0_callback():
-    """Gestisce il callback OAuth di Auth0 e completa l'autenticazione"""
+def handle_google_oauth_callback():
+    """Gestisce il callback OAuth diretto di Google"""
     query_params = get_query_params()
 
     if 'code' in query_params:
         auth_code = query_params['code']
         st.info("🔄 Completamento autenticazione in corso...")
-
-        try:
-            token_url = f"https://{AUTH0_DOMAIN}/oauth/token"
-            data = {
-                'grant_type': 'authorization_code',
-                'client_id': AUTH0_CLIENT_ID,
-                'client_secret': AUTH0_CLIENT_SECRET,
-                'code': auth_code,
-                'redirect_uri': APP_URL
-            }
-
-            response = requests.post(token_url, data=data)
-
-            if response.status_code == 200:
-                tokens = response.json()
-                st.session_state.access_token = tokens.get('access_token')
-                st.session_state.refresh_token = tokens.get('refresh_token')
-                st.session_state.authenticated = True
-
-                # Recupera email utente
-                userinfo_url = f"https://{AUTH0_DOMAIN}/userinfo"
-                headers = {"Authorization": f"Bearer {tokens.get('access_token')}"}
-                userinfo = requests.get(userinfo_url, headers=headers).json()
-                st.session_state.user_email = userinfo.get('email', 'Unknown')
-
-                test_success = test_google_credentials()
-
-                clear_query_params()
-                if hasattr(st.session_state, 'auth_url'):
-                    del st.session_state.auth_url
-
-                if test_success:
-                    st.success("✅ Login e verifica credenziali Google completati!")
-                    st.session_state.credentials_verified = True
-                else:
-                    st.warning("⚠️ Login completato ma credenziali Google non funzionano")
-                    st.session_state.credentials_verified = False
-
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error(f"❌ Errore durante il completamento del login: {response.text}")
-                clear_query_params()
-        except Exception as e:
-            st.error(f"❌ Errore nel callback OAuth: {e}")
-            clear_query_params()
-            st.session_state.authenticated = False
-            if hasattr(st.session_state, 'auth_url'):
-                del st.session_state.auth_url
-
+        exchange_direct_oauth_code(auth_code)
+        clear_query_params()
+        if hasattr(st.session_state, 'auth_url'):
+            del st.session_state.auth_url
+        st.rerun()
     elif 'error' in query_params:
-        error_description = query_params.get('error_description', 'Errore sconosciuto')
+        error_description = query_params.get('error', 'Errore sconosciuto')
         st.error(f"❌ Errore di autenticazione: {error_description}")
         clear_query_params()
         if hasattr(st.session_state, 'auth_url'):
@@ -337,26 +282,27 @@ def test_google_credentials():
         st.error(f"Test credenziali Google fallito: {e}")
         return False
 
-def handle_auth0_login():
-    """Genera l'URL di login OAuth tramite Auth0"""
+def handle_google_oauth_login():
+    """Genera l'URL di login OAuth diretto con Google"""
     try:
+        google_oauth_url = "https://accounts.google.com/o/oauth2/v2/auth"
         params = {
-            'client_id': AUTH0_CLIENT_ID,
-            'response_type': 'code',
+            'client_id': st.secrets.get("google_oauth_client_id"),
             'redirect_uri': APP_URL,
-            'scope': 'openid email profile offline_access https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/cloud-platform.read-only'
+            'scope': 'openid email profile https://www.googleapis.com/auth/webmasters.readonly',
+            'response_type': 'code',
+            'access_type': 'offline',
+            'prompt': 'consent'
         }
-        return f"https://{AUTH0_DOMAIN}/authorize?{urlencode(params)}"
+        return f"{google_oauth_url}?{urlencode(params)}"
     except Exception as e:
         st.error(f"Errore durante la generazione dell'URL di login: {e}")
         return None
 
 def check_authentication():
-    """Verifica se l'utente è autenticato"""
-    # Prima controlla se abbiamo dati di sessione locali
+    """Verifica se l'utente è autenticato tramite OAuth Google"""
     if st.session_state.get('authenticated', False) and st.session_state.get('access_token'):
         return True
-    
     return False
 
 def logout():
@@ -551,7 +497,7 @@ def main():
     st.caption("Fammi una domanda sui tuoi dati di Google Search Console. La mia AI la tradurrà e ti risponderò!")
 
     # Gestione callback OAuth
-    handle_auth0_callback()
+    handle_google_oauth_callback()
 
     # Controllo autenticazione
     if not check_authentication():
@@ -571,7 +517,7 @@ def main():
             """, unsafe_allow_html=True)
             
             if st.button("🔑 Accedi con Google", key="login_button", help="Login OAuth con Google"):
-                auth_url = handle_auth0_login()
+                auth_url = handle_google_oauth_login()
                 if auth_url:
                     st.session_state.auth_url = auth_url
                     st.rerun()
@@ -660,19 +606,12 @@ Client ID attuale: {st.secrets.get('google_oauth_client_id', 'NON CONFIGURATO')}
                     st.markdown("Questi URI DEVONO essere configurati:")
                     st.code(f"""
 {APP_URL}
-https://{AUTH0_DOMAIN}/callback
 """)
                     
                     st.markdown("**3. API abilitate in Google Cloud Console:**")
                     st.markdown("- ✅ Google Search Console API")
                     st.markdown("- ✅ Google+ API (legacy, ma a volte necessaria)")
                     
-                    st.markdown("**4. Configurazione Auth0:**")
-                    st.markdown("Dashboard → Applications → Settings:")
-                    st.code(f"""
-Domain: {AUTH0_DOMAIN}
-Client ID: {AUTH0_CLIENT_ID}
-""")
                 
                 with st.expander("🛠️ Test Manuale Credenziali", expanded=False):
                     st.markdown("**Testa le tue credenziali manualmente:**")
