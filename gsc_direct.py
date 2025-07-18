@@ -203,7 +203,8 @@ class GSCDirectMode:
                 'columns': list(df.columns),
                 'shape': df.shape,
                 'sample_data': df.head(10).to_string(index=False),
-                'data_types': df.dtypes.to_dict()
+                'data_types': df.dtypes.to_dict(),
+                'data_json': df.to_json(orient='records')
             }
             
             prompt_parts = [
@@ -215,6 +216,7 @@ class GSCDirectMode:
                 f"- Tipi di dati: {df_info['data_types']}",
                 f"\nCampione di dati (prime 10 righe):",
                 df_info['sample_data'],
+                f"\nDati completi in formato JSON: {df_info['data_json']}",
                 "\nAnalizza i dati e rispondi alla domanda dell'utente in modo chiaro e conciso.",
                 "Metti in grassetto (usando **testo**) le metriche e i dati più importanti.",
                 "Se necessario, calcola aggregazioni, trend o confronti basati sui dati forniti."
