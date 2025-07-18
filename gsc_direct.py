@@ -15,7 +15,10 @@ class GSCDirectMode:
         self.OPENAI_MODEL = "o4-mini"
         self.openai_api_key = st.secrets.get("openai_api_key", None)
         if self.openai_api_key:
-            openai.api_key = self.openai_api_key
+            # Create an OpenAI client using the new 1.x interface
+            self.openai_client = openai.OpenAI(api_key=self.openai_api_key)
+        else:
+            self.openai_client = None
 
     
     def refresh_credentials(self):
@@ -148,7 +151,7 @@ class GSCDirectMode:
             ]
             
             full_prompt = "\n".join(prompt_parts)
-            response = openai.ChatCompletion.create(
+            response = self.openai_client.chat.completions.create(
                 model=self.OPENAI_MODEL,
                 messages=[{"role": "user", "content": full_prompt}],
                 temperature=0.3,
@@ -248,7 +251,7 @@ Il codice deve:
 
 Restituisci SOLO il codice Python.
 """
-            response = openai.ChatCompletion.create(
+            response = self.openai_client.chat.completions.create(
                 model=self.OPENAI_MODEL,
                 messages=[{"role": "user", "content": chart_prompt}],
                 temperature=0.2,
