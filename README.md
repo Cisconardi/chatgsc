@@ -1,28 +1,223 @@
-ChatGSC è l'AI Analyst di cui non sapevi di aver bisogno 👇 
+# ChatGSC - Conversa con i dati di Google Search Console
 
-Tirare fuori insight dai dati di BigQuery + Search Console semplicemente chattando con un AI è finalmente possibile. 💬 
+## 🏗️ Struttura del Progetto
 
-Qualche consiglio aggiuntivo:
+Il progetto è ora organizzato in moduli separati per una migliore manutenibilità e scalabilità:
 
-1) Ricorda che ChatGSC traduce le tue domande in query SQL perciò conoscere una base di SQL ti permetterà di formulare domande anche complesse. Pro tip: usa un linguaggio colloquiale, ma una struttura in pseudocodice!
+```
+chatgsc/
+├── app.py                 # File principale dell'applicazione
+├── gsc_direct.py         # Modalità Google Search Console Diretta
+├── bigquery_mode.py      # Modalità BigQuery Avanzata  
+├── config.py             # Configurazioni e utility
+├── requirements.txt      # Dipendenze Python
+└── README.md            # Documentazione
+```
 
-2) Impara quali sono le tabelle dei dataset di Search Console importati su BigQuery in modo da poter fare domande sempre puntuali https://lnkd.in/dsbiMCQQ
+## 📁 Descrizione dei File
 
-3) Ricorda che non è possibile fare forecasting, chiedere consigli personali o indicazioni che siano al di fuori del compito di ChatGSC (non ti porterà il caffè!)
+### `app.py` - File Principale
+- **Funzione**: Entry point dell'applicazione
+- **Responsabilità**:
+  - Configurazione Streamlit e Supabase
+  - Gestione autenticazione OAuth
+  - Coordinamento tra le modalità
+  - UI principale e sidebar
+  - Footer e privacy policy
 
-4) Sii paziente e formula bene le domande inserendo contesto, filtri, date o intervalli specifici, definisci bene i calcoli che vuoi fare in linguaggio chiaro, evita l'uso eccessivo della punteggiatura e non creare tanti periodi
+### `gsc_direct.py` - Modalità GSC Diretta
+- **Funzione**: Interazione diretta con Google Search Console API
+- **Caratteristiche**:
+  - Fetch dati in tempo reale da GSC
+  - Analisi AI su DataFrame
+  - Configurazione semplificata
+  - Domande preimpostate ottimizzate
 
-5) ChatGSC è monotask, non chiedergli troppe cose insieme o si rifiuterà di lavorare (giustamente)
+### `bigquery_mode.py` - Modalità BigQuery
+- **Funzione**: Analisi avanzata su dati GSC esportati in BigQuery
+- **Caratteristiche**:
+  - Generazione automatica SQL tramite AI
+  - Query complesse su dati storici
+  - Schema tabelle dinamico
+  - Analisi potenti con aggregazioni
 
-6) Le API hanno un costo, visita il sito di GCP per ulteriori informazioni https://lnkd.in/drU-CzVw
+### `config.py` - Configurazioni
+- **Funzione**: Configurazioni centrali e utility
+- **Contenuto**:
+  - Costanti globali
+  - Modelli AI utilizzati
+  - Domande preimpostate
+  - Funzioni helper
+  - Validazioni
 
-7) Se hai problemi con l'output di ChatGSC, verifica sempre la query SQL che ha generato e ricorda che le colonne del dataset sono case sensitive
+## 🚀 Come Eseguire
 
-Post LinkedIn
+### 1. Installazione Dipendenze
+```bash
+pip install -r requirements.txt
+```
 
+### 2. Configurazione Secrets
+Crea il file `.streamlit/secrets.toml`:
+```toml
+SUPABASE_URL = "https://your-project.supabase.co"
+SUPABASE_ANON_KEY = "your-anon-key"
+google_oauth_client_id = "your-client-id"
+google_oauth_client_secret = "your-client-secret"
+app_url = "https://your-app-url.streamlit.app"
+```
 
+### 3. Avvio Applicazione
+```bash
+streamlit run app.py
+```
 
-2 - Ho raccolto 10+1 prompt progressivamente più complessi per fare analisi statistiche, esplorazione dei dati e ottenere insight rapidi. 🔎 - 
-https://www.linkedin.com/posts/francisco-nardi-212b338b_11-domande-per-imparare-ad-utilizzare-chatgsc-activity-7331674991161147393-LYFb?utm_source=share&utm_medium=member_desktop&rcm=ACoAABM1_G4BBvR-ZmzUI5pjNgrUlGzFaDTbjv4
+## 🔧 Configurazione
 
-1 - Ho creato hashtag#ChatGSC 🤖 - https://www.linkedin.com/posts/francisco-nardi-212b338b_benvenuto-su-chatgsc-activity-7331010414094319617-Qga4?utm_source=share&utm_medium=member_desktop&rcm=ACoAABM1_G4BBvR-ZmzUI5pjNgrUlGzFaDTbjv4
+### Supabase Setup
+1. Crea progetto su [Supabase](https://supabase.com)
+2. Abilita Google OAuth Provider
+3. Configura redirect URLs:
+   - `https://your-app-url.streamlit.app`
+4. Copia URL e anon key nei secrets
+
+### Google Cloud Setup
+1. Crea progetto su [Google Cloud Console](https://console.cloud.google.com)
+2. Abilita API:
+   - Google Search Console API
+   - BigQuery API (per modalità avanzata)
+   - Vertex AI API (per modalità avanzata)
+3. Crea OAuth 2.0 Client ID
+4. Aggiungi redirect URI di Supabase
+
+## 📊 Modalità di Utilizzo
+
+### 🔍 GSC Diretto
+**Vantaggi**:
+- ✅ Setup semplice
+- ✅ Dati in tempo reale
+- ✅ Non richiede BigQuery
+- ✅ Configurazione rapida
+
+**Limitazioni**:
+- ⚠️ Limitato a 25.000 righe per query
+- ⚠️ Solo ultimi 16 mesi di dati
+- ⚠️ Dimensioni API predefinite
+
+### 📊 BigQuery Avanzato
+**Vantaggi**:
+- ✅ Dati storici completi
+- ✅ Query SQL complesse
+- ✅ Joins tra tabelle
+- ✅ Analisi avanzate
+
+**Requisiti**:
+- 🔧 Export GSC → BigQuery configurato
+- 🔧 Progetto GCP con Vertex AI
+- 🔧 Permessi BigQuery
+
+## 🛠️ Architettura Tecnica
+
+### Flusso Autenticazione
+```
+User → Google OAuth → Supabase → App
+```
+
+### Modalità GSC Diretta
+```
+User Question → GSC API → DataFrame → AI Analysis → Response
+```
+
+### Modalità BigQuery
+```
+User Question → AI → SQL → BigQuery → DataFrame → AI Summary → Response
+```
+
+## 🔐 Sicurezza
+
+- **OAuth 2.0**: Autenticazione sicura senza password
+- **Token temporanei**: Nessun dato persistente
+- **HTTPS**: Comunicazioni crittografate
+- **Scope limitati**: Accesso minimo necessario
+
+## 📈 Features
+
+### Comuni
+- 🤖 Analisi AI avanzata
+- 📊 Generazione grafici automatica
+- 💬 Chat naturale
+- 🔄 Domande preimpostate
+
+### GSC Diretto
+- 📅 Selezione periodo flessibile
+- 📊 Dimensioni multiple (query, page, country, device)
+- 🎯 Limite righe configurabile
+- ⚡ Risposta immediata
+
+### BigQuery
+- 🔍 SQL generato automaticamente
+- 📋 Schema tabelle dinamico
+- 🕒 Analisi storiche complete
+- 🔗 Query complesse con joins
+
+## 🐛 Troubleshooting
+
+### Errori Comuni
+
+**"Authentication failed"**
+- ✅ Verifica configurazione OAuth in Google Cloud
+- ✅ Controlla redirect URI in Supabase
+- ✅ Verifica secrets Streamlit
+
+**"BigQuery permission denied"**
+- ✅ Abilita BigQuery API
+- ✅ Verifica permessi IAM del progetto
+- ✅ Controlla nome progetto nei secrets
+
+**"Vertex AI not available"**
+- ✅ Abilita Vertex AI API
+- ✅ Verifica region supportate
+- ✅ Controlla quota progetto
+
+### Logs e Debug
+- 🔍 Streamlit Cloud: Manage app → Logs
+- 🔍 Browser: F12 → Console per errori JS
+- 🔍 Supabase: Dashboard → Logs per OAuth
+
+## 📝 TODO / Roadmap
+
+### V2.0 Features
+- [ ] Cache intelligente per query frequenti
+- [ ] Export risultati (CSV, PDF)
+- [ ] Dashboard personalizzabili
+- [ ] Alerting automatico
+- [ ] Multi-sito support
+- [ ] API pubblica
+
+### Miglioramenti Tecnici
+- [ ] Unit tests
+- [ ] CI/CD pipeline
+- [ ] Error tracking (Sentry)
+- [ ] Performance monitoring
+- [ ] Database per storico sessioni
+
+## 🤝 Contribuire
+
+1. Fork del repository
+2. Crea feature branch
+3. Commit delle modifiche
+4. Push e pull request
+
+## 📄 Licenza
+
+Questo progetto è distribuito sotto licenza MIT.
+
+## 🆘 Supporto
+
+- **Email**: info@francisconardi
+- **LinkedIn**: [Francisco Nardi](https://www.linkedin.com/in/francisco-nardi-212b338b/)
+- **Issues**: GitHub Issues per bug e feature requests
+
+---
+
+Made with ❤️ by Francisco Nardi
