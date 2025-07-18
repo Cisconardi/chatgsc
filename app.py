@@ -58,155 +58,6 @@ APP_URL = st.secrets.get("app_url", "https://chatgsc.streamlit.app")
 
 
 # --- Gestione Autenticazione OAuth ---
-def setup_service_account(uploaded_file):
-    """Configura l'autenticazione usando Service Account"""
-    try:
-        # Leggi il file JSON
-        service_account_info = json.loads(uploaded_file.getvalue().decode('utf-8'))
-        
-        # Verifica che sia un Service Account valido
-        if 'type' not in service_account_info or service_account_info['type'] != 'service_account':
-            st.error("❌ Il file caricato non è un Service Account valido")
-            return
-        
-        # Salva temporaneamente le credenziali
-        import tempfile
-        import json
-        
-        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
-        json.dump(service_account_info, temp_file)
-        temp_file.close()
-        
-        # Configura le credenziali
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
-        st.session_state.temp_credentials_file = temp_file.name
-        
-        # Test immediato
-        try:
-            from google.oauth2 import service_account
-            
-            credentials = service_account.Credentials.from_service_account_info(
-                service_account_info,
-                scopes=['https://www.googleapis.com/auth/webmasters.readonly']
-            )
-            
-            service = build('searchconsole', 'v1', credentials=credentials)
-            sites_response = service.sites().list().execute()
-            sites = sites_response.get('siteEntry', [])
-            
-            if sites:
-                st.success(f"🎉 Service Account configurato! Trovati {len(sites)} siti GSC.")
-                st.success(f"📧 Service Account email: {service_account_info.get('client_email')}")
-                
-                # Salva lo stato
-                st.session_state.authenticated = True
-                st.session_state.credentials_verified = True
-                st.session_state.user_email = service_account_info.get('client_email')
-                st.session_state.auth_method = 'service_account'
-                
-                # Lista siti trovati
-                st.markdown("**Siti GSC accessibili:**")
-                for site in sites:
-                    st.markdown(f"- {site['siteUrl']} ({site['permissionLevel']})")
-                
-                st.rerun()
-                
-            else:
-                st.warning("⚠️ Service Account configurato ma nessun sito GSC accessibile.")
-                st.info("💡 Aggiungi il Service Account come utente nelle proprietà GSC che vuoi analizzare.")
-                
-        except Exception as e:
-            st.error(f"❌ Errore nel test Service Account: {e}")
-            st.info("Verifica che il Service Account sia stato aggiunto come utente in Google Search Console.")
-            
-    except Exception as e:
-        st.error(f"❌ Errore nel setup Service Account: {e}")
-
-def test_manual_credentials(client_id, client_secret, access_token):
-    """Testa credenziali inserite manualmente"""
-    try:
-        from google.oauth2.credentials import Credentials
-        
-        credentials = Credentials(
-            token=access_token,
-            client_id=client_id,
-            client_secret=client_secret,
-            token_uri="https://oauth2.googleapis.com/token",
-            scopes=['https://www.googleapis.com/auth/webmasters.readonly']
-        )
-        
-        service = build('searchconsole', 'v1', credentials=credentials)
-        response = service.sites().list().execute()
-        
-        sites = response.get('siteEntry', [])
-        st.success(f"✅ Credenziali manuali OK! Trovati {len(sites)} siti GSC.")
-        
-        # Salva le credenziali funzionanti
-        st.session_state.access_token = access_token
-        st.session_state.authenticated = True
-        st.session_state.credentials_verified = True
-        
-        return True
-        
-    except Exception as e:
-        st.error(f"❌ Test credenziali manuali fallito: {e}")
-        return False
-
-def extract_and_use_code(return_url):
-    """Estrae il codice OAuth dall'URL di ritorno e lo scambia con i token"""
-    try:
-        from urllib.parse import urlparse, parse_qs
-        
-        # Estrai il code dall'URL
-        parsed = urlparse(return_url)
-        query_params = parse_qs(parsed.query)
-        
-        if 'code' not in query_params:
-            st.error("❌ Nessun codice di autorizzazione trovato nell'URL")
-            return False
-            
-        auth_code = query_params['code'][0]
-        st.info(f"🔍 Codice estratto: {auth_code[:20]}...")
-        
-        # Scambia il codice con i token
-        token_url = "https://oauth2.googleapis.com/token"
-        
-        data = {
-            'client_id': st.secrets.get("google_oauth_client_id"),
-            'client_secret': st.secrets.get("google_oauth_client_secret"),
-            'code': auth_code,
-            'grant_type': 'authorization_code',
-            'redirect_uri': APP_URL
-        }
-        
-        response = requests.post(token_url, data=data)
-        
-        if response.status_code == 200:
-            tokens = response.json()
-            
-            st.success("✅ Scambio codice → token completato!")
-            st.json(tokens)  # Mostra i token per debug
-            
-            # Salva i token
-            st.session_state.access_token = tokens.get('access_token')
-            st.session_state.refresh_token = tokens.get('refresh_token')
-            st.session_state.authenticated = True
-            
-            # Test immediato
-            if test_google_credentials():
-                st.success("🎉 Credenziali Google funzionanti! GSC accessibile.")
-                st.session_state.credentials_verified = True
-                st.rerun()
-            else:
-                st.error("❌ Token ottenuti ma GSC non accessibile")
-                
-        else:
-            st.error(f"❌ Errore scambio token: {response.status_code}")
-            st.code(response.text)
-            
-    except Exception as e:
-        st.error(f"❌ Errore nell'estrazione del codice: {e}")
-
 def exchange_direct_oauth_code(auth_code):
     """Scambia il codice OAuth direttamente con Google per ottenere i token"""
     try:
@@ -355,24 +206,6 @@ def get_gsc_sites():
         return []
     
     try:
-        # Verifica se stiamo usando Service Account
-        if st.session_state.get('auth_method') == 'service_account':
-            # Usa Service Account credentials
-            if os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-                from google.oauth2 import service_account
-                
-                credentials = service_account.Credentials.from_service_account_file(
-                    os.getenv("GOOGLE_APPLICATION_CREDENTIALS"),
-                    scopes=['https://www.googleapis.com/auth/webmasters.readonly']
-                )
-                
-                service = build('searchconsole', 'v1', credentials=credentials)
-                sites_response = service.sites().list().execute()
-                sites = sites_response.get('siteEntry', [])
-                
-                return [{'url': site['siteUrl'], 'permission': site['permissionLevel']} for site in sites]
-        
-        # Altrimenti usa OAuth (codice esistente)
         if not st.session_state.get('access_token'):
             st.error("❌ Access token mancante")
             return []
@@ -398,12 +231,7 @@ def get_gsc_sites():
         st.error(f"❌ Errore dettagliato: {error_msg}")
         
         if 'invalid_grant' in error_msg or 'Bad Request' in error_msg:
-            st.error("🔑 **Diagnosi**: Token Google non validi o scaduti")
-            st.info("**Soluzioni possibili:**")
-            st.info("1. Usa 'Service Account' (soluzione definitiva)")
-            st.info("2. Clicca 'Diagnostica Completa OAuth'")
-            st.info("3. Prova 'OAuth Manuale'")
-            
+            st.error("🔑 Sessione scaduta o token non validi")
             st.session_state.authenticated = False
             if st.button("🔄 Vai al Login", key="gsc_login_redirect"):
                 st.rerun()
@@ -426,7 +254,6 @@ def init_session_state():
         'access_token': None,
         'refresh_token': None,
         'credentials_verified': False,
-        'auth_method': 'oauth',  # 'oauth' o 'service_account'
         'gsc_sites_data': [],
         'selected_site': "",
         'selected_project_id': "",
@@ -460,7 +287,7 @@ PRIVACY_POLICY_TEXT = """
 
 **Ultimo aggiornamento:** Gennaio 2025
 
-Questa applicazione utilizza l'autenticazione OAuth 2.0 tramite Auth0 per accedere ai tuoi dati di Google Search Console.
+Questa applicazione utilizza l'autenticazione OAuth 2.0 di Google per accedere ai tuoi dati di Google Search Console.
 
 **Dati Raccolti:**
 - Informazioni di base del profilo Google (email)
@@ -546,201 +373,24 @@ def main():
             
             # Istruzioni per problemi comuni
             with st.expander("🔧 Risoluzione Problemi", expanded=False):
-                st.markdown("""
-                **Se vedi "Sessione scaduta" o "invalid_grant":**
-                
-                Il problema può essere dovuto a:
-                
-                **1. Configurazione Auth0 → Google:**
-                - Authentication → Social → Google
-                - Assicurati che "Enable" sia attivo
-                - Verifica Client ID e Client Secret corretti
-                - Copia il "Callback URL" e aggiungilo in Google Cloud Console
-                
-                **2. Google Cloud Console:**
-                - API & Services → Credentials
-                - OAuth 2.0 Client deve avere il callback URL di Auth0
-                - Google Search Console API deve essere abilitata
-                
-                **3. Provider Token Access:**
-                - Auth0 potrebbe non esporre i token Google
-                - In questo caso, usa "OAuth Diretto Google" sopra
-                
-                **4. Scope OAuth in Auth0:**
-                ```
-                openid email profile https://www.googleapis.com/auth/webmasters.readonly
-                ```
-                """)
+                st.markdown(
+                    "Assicurati che l'OAuth di Google sia configurato correttamente nella Google Cloud Console e che la API di Search Console sia abilitata."
+                )
             
             
         else:
             # Utente autenticato
-            auth_method = st.session_state.get('auth_method', 'oauth')
-            auth_method_display = "🔐 Service Account" if auth_method == 'service_account' else "🔑 OAuth"
             
             st.markdown(f"""
             <div class="user-info">
                 <h4>👤 Utente Connesso</h4>
                 <p><strong>Email:</strong> {st.session_state.user_email}</p>
-                <p><strong>Metodo:</strong> {auth_method_display}</p>
             </div>
             """, unsafe_allow_html=True)
             
             if st.button("🚪 Logout", key="logout_button"):
                 logout()
             
-            # Diagnostica completa OAuth
-            if st.button("🔬 Diagnostica Completa OAuth", key="full_diagnostic"):
-                st.markdown("### 🔍 Diagnosi Dettagliata del Problema OAuth")
-                
-                with st.expander("📋 Checklist Configurazione", expanded=True):
-                    st.markdown("**Verifica questi punti in ordine:**")
-                    
-                    st.markdown("**1. Google Cloud Console - API & Services → Credentials:**")
-                    st.code(f"""
-Client ID attuale: {st.secrets.get('google_oauth_client_id', 'NON CONFIGURATO')}
-""")
-                    st.markdown("✅ Deve corrispondere esattamente al Client ID nel tuo progetto Google")
-                    
-                    st.markdown("**2. Authorized redirect URIs nel Google Cloud Console:**")
-                    st.markdown("Questi URI DEVONO essere configurati:")
-                    st.code(f"""
-{APP_URL}
-""")
-                    
-                    st.markdown("**3. API abilitate in Google Cloud Console:**")
-                    st.markdown("- ✅ Google Search Console API")
-                    st.markdown("- ✅ Google+ API (legacy, ma a volte necessaria)")
-                    
-                
-                with st.expander("🛠️ Test Manuale Credenziali", expanded=False):
-                    st.markdown("**Testa le tue credenziali manualmente:**")
-                    
-                    manual_client_id = st.text_input("Inserisci Google Client ID:", key="manual_client_id")
-                    manual_client_secret = st.text_input("Inserisci Google Client Secret:", type="password", key="manual_client_secret")
-                    manual_access_token = st.text_input("Inserisci Access Token (se disponibile):", key="manual_access_token")
-                    
-                    if st.button("🧪 Testa Credenziali Manuali", key="test_manual_creds"):
-                        if manual_client_id and manual_client_secret and manual_access_token:
-                            test_manual_credentials(manual_client_id, manual_client_secret, manual_access_token)
-                        else:
-                            st.warning("Compila tutti i campi per il test")
-            
-            # Metodo alternativo: Generazione URL manuale
-            if st.button("🔧 Genera URL OAuth Manuale", key="manual_oauth_url"):
-                st.markdown("### 🔗 OAuth Manuale - Procedura Step by Step")
-                
-                # URL OAuth pulito
-                base_url = "https://accounts.google.com/o/oauth2/v2/auth"
-                client_id = st.secrets.get("google_oauth_client_id")
-                
-                params = {
-                    'client_id': client_id,
-                    'redirect_uri': APP_URL,
-                    'scope': 'https://www.googleapis.com/auth/webmasters.readonly',
-                    'response_type': 'code',
-                    'access_type': 'offline',
-                    'prompt': 'consent',
-                    'include_granted_scopes': 'true'
-                }
-                
-                manual_url = f"{base_url}?{urlencode(params)}"
-                
-                st.markdown("**Procedura:**")
-                st.markdown("1. 🔗 Clicca il link qui sotto")
-                st.markdown("2. 🔐 Autorizza l'accesso a Google Search Console")
-                st.markdown("3. 📋 Copia TUTTO l'URL della pagina di ritorno")
-                st.markdown("4. 📝 Incollalo nel campo sottostante")
-                
-                st.link_button("🚀 Autorizza con Google (Manuale)", manual_url)
-                
-                return_url = st.text_area(
-                    "Incolla qui l'URL completo della pagina di ritorno:",
-                    placeholder=f"{APP_URL}?code=4/0AcvDMrA...",
-                    key="return_url_manual"
-                )
-                
-                if st.button("🔄 Estrai e Usa Codice", key="extract_code") and return_url:
-                    extract_and_use_code(return_url)
-            
-            # Soluzione Service Account (alternativa robusta)
-            if st.button("🔐 Usa Service Account (Soluzione Definitiva)", key="service_account_option"):
-                st.markdown("### 🎯 Soluzione Service Account - 100% Affidabile")
-                
-                st.markdown("""
-                **Perché Service Account?**
-                - ✅ Nessun token scaduto
-                - ✅ Nessun problema OAuth
-                - ✅ Perfetto per applicazioni server-side
-                - ✅ Configurazione una volta sola
-                """)
-                
-                st.markdown("**Setup richiesto:**")
-                st.markdown("1. 🔧 Google Cloud Console → API & Services → Credentials")
-                st.markdown("2. 📋 Create Credentials → Service Account")
-                st.markdown("3. 🔑 Crea chiave JSON per il Service Account")
-                st.markdown("4. 🌐 Aggiungi il Service Account in Google Search Console:")
-                st.markdown("   - Vai alle tue proprietà GSC")
-                st.markdown("   - Settings → Users and permissions")
-                st.markdown("   - Add user → Inserisci l'email del Service Account")
-                st.markdown("   - Permessi: Owner o Full")
-                
-                uploaded_sa_file = st.file_uploader(
-                    "Carica il file JSON del Service Account:",
-                    type="json",
-                    key="service_account_file"
-                )
-                
-                if uploaded_sa_file:
-                    if st.button("🚀 Configura Service Account", key="setup_service_account"):
-                        setup_service_account(uploaded_sa_file)
-                
-                st.markdown("**Vantaggi:**")
-                st.markdown("- 🔒 Autenticazione permanente")
-                st.markdown("- ⚡ Nessun login richiesto")
-                st.markdown("- 🎯 Accesso diretto alle API Google")
-                st.markdown("- 💯 Risolve definitivamente 'invalid_grant'")
-                
-                st.info("💡 **Nota**: Il Service Account deve essere aggiunto come utente in Google Search Console per ogni proprietà che vuoi analizzare.")
-            
-            # Pulsante per approccio OAuth diretto
-            if st.button("🌐 Prova OAuth Diretto Google", key="direct_oauth"):
-                st.info("🔧 **OAuth Diretto**: Questa opzione bypassa Auth0 e usa OAuth Google diretto")
-                
-                # Genera URL OAuth diretto
-                google_oauth_url = "https://accounts.google.com/o/oauth2/v2/auth"
-                params = {
-                    'client_id': st.secrets.get("google_oauth_client_id"),
-                    'redirect_uri': APP_URL,
-                    'scope': 'openid email profile https://www.googleapis.com/auth/webmasters.readonly',
-                    'response_type': 'code',
-                    'access_type': 'offline',
-                    'prompt': 'consent'
-                }
-                
-                direct_oauth_url = f"{google_oauth_url}?{urlencode(params)}"
-                
-                st.markdown("**Istruzioni:**")
-                st.markdown("1. Clicca il link sotto")
-                st.markdown("2. Autorizza l'accesso a Google Search Console")
-                st.markdown("3. Copia il 'code' dall'URL di ritorno")
-                st.markdown("4. Incollalo nel campo qui sotto")
-                
-                st.link_button("🚀 Vai a Google OAuth", direct_oauth_url)
-                
-                auth_code_input = st.text_input("Incolla il codice di autorizzazione qui:", key="manual_auth_code")
-                
-                if st.button("🔑 Scambia Codice con Token", key="exchange_code") and auth_code_input:
-                    exchange_direct_oauth_code(auth_code_input)
-            
-            # Pulsante per re-autenticazione forzata
-            if st.button("🔄 Forza Re-autenticazione", key="force_reauth"):
-                st.session_state.authenticated = False
-                st.session_state.access_token = None
-                st.session_state.refresh_token = None
-                st.session_state.credentials_verified = False
-                st.info("Effettua nuovamente il login per risolvere i problemi di credenziali.")
-                st.rerun()
             
             st.markdown("---")
             
