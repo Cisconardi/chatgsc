@@ -279,7 +279,8 @@ top_data = df.nlargest(10, 'impressions')
 fig, ax = plt.subplots(figsize=(12, 6))
 bars = ax.barh(range(len(top_data)), top_data['impressions'])
 ax.set_yticks(range(len(top_data)))
-ax.set_yticklabels([url.split('/')[-1][:30] + '...' if len(url) > 30 else url for url in top_data['page']], fontsize=8)
+labels = [url if len(url) <= 50 else url[:47] + '...' for url in top_data['page']]
+ax.set_yticklabels(labels, fontsize=8)
 ax.set_xlabel('Impressioni')
 ax.set_title('Top 10 Pagine per Impressioni')
 ax.invert_yaxis()
@@ -441,11 +442,12 @@ else:
             with st.spinner(f"🤖💬 Recuperando dati da Google Search Console per: \"{user_question_input}\""):
                 gsc_data = self.fetch_gsc_data(
                     config['site_url'],
-                    config['start_date'], 
+                    config['start_date'],
                     config['end_date'],
                     config['dimensions'],
                     config['row_limit']
                 )
+                self.session_state.gsc_data = gsc_data
 
             if gsc_data is not None and not gsc_data.empty:
                 with st.expander("🔍 Dati GSC Recuperati", expanded=False):

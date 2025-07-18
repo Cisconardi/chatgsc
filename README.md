@@ -18,7 +18,7 @@ chatgsc/
 ### `app.py` - File Principale
 - **Funzione**: Entry point dell'applicazione
 - **Responsabilità**:
-  - Configurazione Streamlit e Auth0
+  - Configurazione Streamlit e OAuth
   - Gestione autenticazione OAuth
   - Coordinamento tra le modalità
   - UI principale e sidebar
@@ -51,9 +51,6 @@ pip install -r requirements.txt
 ### 2. Configurazione Secrets
 Copia e rinomina `/.streamlit/secrets.toml.example` in `.streamlit/secrets.toml` e modifica i valori:
 ```toml
-auth0_domain = "your-domain.auth0.com"
-auth0_client_id = "your-client-id"
-auth0_client_secret = "your-client-secret"
 google_oauth_client_id = "your-google-client-id"
 google_oauth_client_secret = "your-google-client-secret"
 app_url = "https://your-app-url.streamlit.app"
@@ -66,13 +63,6 @@ streamlit run app.py
 
 ## 🔧 Configurazione
 
-### Auth0 Setup
-1. Crea tenant su [Auth0](https://auth0.com)
-2. Crea un'applicazione di tipo "Regular Web"
-3. Abilita il provider Google e configura i redirect URLs:
-   - `https://your-app-url.streamlit.app`
-4. Copia dominio, client ID e client secret nei secrets
-
 ### Google Cloud Setup
 1. Crea progetto su [Google Cloud Console](https://console.cloud.google.com)
 2. Abilita API:
@@ -80,7 +70,7 @@ streamlit run app.py
    - BigQuery API (per modalità avanzata)
    - Vertex AI API (per modalità avanzata)
 3. Crea OAuth 2.0 Client ID
-4. Aggiungi il redirect URI di Auth0
+4. Aggiungi il redirect URI dell'app (es. `https://your-app-url.streamlit.app`)
 
 ## 📊 Modalità di Utilizzo
 
@@ -112,7 +102,7 @@ streamlit run app.py
 
 ### Flusso Autenticazione
 ```
-User → Google OAuth → Auth0 → App
+User → Google OAuth → App
 ```
 
 ### Modalità GSC Diretta
@@ -158,8 +148,7 @@ User Question → AI → SQL → BigQuery → DataFrame → AI Summary → Respo
 
 **"Authentication failed"**
 - ✅ Verifica configurazione OAuth in Google Cloud
-- ✅ Controlla redirect URI in Auth0
-- ✅ Verifica secrets Streamlit
+- ✅ Verifica redirect URI e secrets di Streamlit
 
 **"BigQuery permission denied"**
 - ✅ Abilita BigQuery API
@@ -174,7 +163,6 @@ User Question → AI → SQL → BigQuery → DataFrame → AI Summary → Respo
 ### Logs e Debug
 - 🔍 Streamlit Cloud: Manage app → Logs
 - 🔍 Browser: F12 → Console per errori JS
-- 🔍 Auth0 Dashboard → Logs per OAuth
 
 ## 📝 TODO / Roadmap
 
