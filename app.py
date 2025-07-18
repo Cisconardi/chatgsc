@@ -111,11 +111,8 @@ def handle_oauth_callback():
 def handle_oauth_login():
     """Gestisce il login OAuth con Google tramite Supabase"""
     try:
-        # URL di redirect basato sull'ambiente
-        if "localhost" in st.secrets.get("app_url", ""):
-            redirect_url = "http://localhost:8501"  # Porta corretta per Streamlit
-        else:
-            redirect_url = st.secrets.get("app_url", "https://chatgsc.streamlit.app")
+        # Usa sempre l'URL di produzione configurato nei secrets
+        redirect_url = st.secrets.get("app_url", "https://chatgsc.streamlit.app")
         
         st.info(f"🔧 Debug: Usando redirect URL: {redirect_url}")
         
