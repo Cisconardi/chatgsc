@@ -15,6 +15,37 @@ class GSCDirectMode:
         self.TARGET_GEMINI_MODEL = "gemini-2.0-flash-001"
         self.CHART_GENERATION_MODEL = "gemini-2.0-flash-001"
     
+    def refresh_credentials(self):
+        """Aggiorna i token OAuth se necessario"""
+        try:
+            from google.auth.transport.requests import Request
+            
+            credentials = Credentials(
+                token=self.session_state.access_token,
+                refresh_token=self.session_state.refresh_token,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=st.secrets.get("google_oauth_client_id"),
+                client_secret=st.secrets.get("google_oauth_client_secret"),
+                scopes=['https://www.googleapis.com/auth/webmasters.readonly', 
+                       'https://www.googleapis.com/auth/cloud-platform.read-only']
+            )
+            
+            # Refresh se necessario
+            if credentials.expired:
+                credentials.refresh(Request())
+                # Aggiorna i token in session state
+                self.session_state.access_token = credentials.token
+                self.session_state.refresh_token = credentials.refresh_token
+            
+            return credentials
+            
+        except Exception as e:
+            st.error(f"Errore nel refresh delle credenziali: {e}")
+            # Forza re-login
+            self.session_state.authenticated = False
+            st.rerun()
+            return None
+
     def fetch_gsc_data(self, site_url: str, start_date: str, end_date: str, dimensions=['query'], row_limit=1000):
         """Recupera dati direttamente da Google Search Console API"""
         if not self.session_state.get('authenticated', False):
@@ -22,15 +53,10 @@ class GSCDirectMode:
             return None
         
         try:
-            # Crea credenziali
-            credentials = Credentials(
-                token=self.session_state.access_token,
-                refresh_token=self.session_state.refresh_token,
-                token_uri="https://oauth2.googleapis.com/token",
-                client_id=st.secrets.get("google_oauth_client_id"),
-                client_secret=st.secrets.get("google_oauth_client_secret"),
-                scopes=['https://www.googleapis.com/auth/webmasters.readonly']
-            )
+            # Ottieni credenziali aggiornate
+            credentials = self.refresh_credentials()
+            if not credentials:
+                return None
             
             # Costruisci il servizio GSC
             service = build('searchconsole', 'v1', credentials=credentials)
@@ -73,7 +99,14 @@ class GSCDirectMode:
                 return pd.DataFrame()
                 
         except Exception as e:
-            st.error(f"🤖💬 Errore nel recupero dati GSC: {e}")
+            error_msg = str(e)
+            if 'invalid_grant' in error_msg or 'Bad Request' in error_msg:
+                st.error("🔑 Sessione scaduta. Per favore, effettua nuovamente il login.")
+                self.session_state.authenticated = False
+                if st.button("🔄 Vai al Login", key="gsc_login_redirect"):
+                    st.rerun()
+            else:
+                st.error(f"🤖💬 Errore nel recupero dati GSC: {e}")
             return None
 
     def generate_dataframe_analysis(self, question: str, df: pd.DataFrame, project_id: str = None) -> str | None:
