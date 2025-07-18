@@ -3,7 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from huggingface_hub import InferenceClient
+import openai
 
 class GSCDirectMode:
     """Classe per gestire la modalità Google Search Console Diretta"""
@@ -11,9 +11,12 @@ class GSCDirectMode:
     def __init__(self, session_state, get_gsc_sites_func):
         self.session_state = session_state
         self.get_gsc_sites = get_gsc_sites_func
-        self.HF_MODEL = "HuggingFaceTB/SmolLM3-3B"
-        self.hf_token = st.secrets.get("hf_api_token", None)
-        self.hf_client = InferenceClient(model=self.HF_MODEL, token=self.hf_token)
+
+        self.OPENAI_MODEL = "o4-mini"
+        self.openai_api_key = st.secrets.get("openai_api_key", None)
+        if self.openai_api_key:
+            openai.api_key = self.openai_api_key
+
     
     def refresh_credentials(self):
         """Aggiorna i token OAuth se necessario"""
@@ -114,8 +117,10 @@ class GSCDirectMode:
         if df.empty:
             return "Non ci sono dati da analizzare."
         
-        # Se il client HF non è disponibile, restituiamo un'analisi di base
-        if not self.hf_client:
+
+        # Se la chiave OpenAI non è disponibile, restituiamo un'analisi di base
+        if not self.openai_api_key:
+
             return self._generate_basic_analysis(question, df)
 
         try:
@@ -143,20 +148,18 @@ class GSCDirectMode:
             ]
             
             full_prompt = "\n".join(prompt_parts)
-            response = self.hf_client.text_generation(
-                full_prompt,
-                max_new_tokens=1024,
-                temperature=0.3
+            response = openai.ChatCompletion.create(
+                model=self.OPENAI_MODEL,
+                messages=[{"role": "user", "content": full_prompt}],
+                temperature=0.3,
+                max_tokens=1024,
             )
 
-            if not response:
+            answer = response["choices"][0]["message"]["content"].strip()
+            if not answer:
                 return self._generate_basic_analysis(question, df)
+            return answer
 
-            if isinstance(response, str):
-                return response.strip()
-            if hasattr(response, 'generated_text'):
-                return response.generated_text.strip()
-            return str(response).strip()
         except Exception as e:
             st.warning(f"Errore nell'analisi AI avanzata: {e}. Uso analisi di base.")
             return self._generate_basic_analysis(question, df)
@@ -204,9 +207,10 @@ class GSCDirectMode:
         if df.empty:
             st.info("🤖💬 Nessun dato disponibile per generare un grafico.")
             return None
-        
-        # Se il client HF non è disponibile, generiamo codice di base
-        if not self.hf_client:
+
+        # Se la chiave OpenAI non è disponibile, generiamo codice di base
+        if not self.openai_api_key:
+
             return self._generate_basic_chart_code(df)
 
         try:
@@ -244,16 +248,17 @@ Il codice deve:
 
 Restituisci SOLO il codice Python.
 """
-            response = self.hf_client.text_generation(
-                chart_prompt,
-                max_new_tokens=512,
-                temperature=0.2
+            response = openai.ChatCompletion.create(
+                model=self.OPENAI_MODEL,
+                messages=[{"role": "user", "content": chart_prompt}],
+                temperature=0.2,
+                max_tokens=512,
             )
 
-            if not response:
+            code_content = response["choices"][0]["message"]["content"].strip()
+            if not code_content:
                 return self._generate_basic_chart_code(df)
 
-            code_content = response.strip() if isinstance(response, str) else getattr(response, 'generated_text', str(response)).strip()
             if code_content.startswith("```python"):
                 code_content = code_content[len("```python"):].strip()
             if code_content.endswith("```"):
