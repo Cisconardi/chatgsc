@@ -155,7 +155,11 @@ class GSCDirectMode:
                 model=self.OPENAI_MODEL,
                 messages=[{"role": "user", "content": full_prompt}],
                 temperature=0.3,
-                max_tokens=1024,
+                # Some providers expect the parameter name 'max_completion_tokens'
+                # instead of 'max_tokens'. Using the more compatible parameter
+                # avoids API errors like:
+                # "Unsupported parameter: 'max_tokens' is not supported with this model."
+                max_completion_tokens=1024,
             )
 
             answer = response["choices"][0]["message"]["content"].strip()
@@ -255,7 +259,9 @@ Restituisci SOLO il codice Python.
                 model=self.OPENAI_MODEL,
                 messages=[{"role": "user", "content": chart_prompt}],
                 temperature=0.2,
-                max_tokens=512,
+                # Use 'max_completion_tokens' for wider compatibility with
+                # models that do not accept the 'max_tokens' parameter.
+                max_completion_tokens=512,
             )
 
             code_content = response["choices"][0]["message"]["content"].strip()
