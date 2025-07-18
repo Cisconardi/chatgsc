@@ -14,6 +14,20 @@ from googleapiclient.discovery import build
 from gsc_direct import GSCDirectMode
 from bigquery_mode import BigQueryMode
 
+# --- Helper per compatibilità query params ---
+def get_query_params() -> dict:
+    """Ritorna i query params compatibilmente con le vecchie versioni di Streamlit."""
+    if hasattr(st, "query_params"):
+        return st.query_params
+    return st.experimental_get_query_params()
+
+def clear_query_params() -> None:
+    """Pulisce i query params in modo compatibile."""
+    if hasattr(st, "query_params"):
+        st.query_params.clear()
+    else:
+        st.experimental_set_query_params()
+
 # --- Configurazione Pagina Streamlit ---
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
 
@@ -47,6 +61,9 @@ except KeyError as e:
     st.error(f"🔑 Configurazione mancante: {e}")
     st.error("Per favore configura i secrets SUPABASE_URL e SUPABASE_ANON_KEY in Streamlit Cloud.")
     st.stop()
+
+# URL dell'applicazione per i redirect OAuth
+APP_URL = st.secrets.get("app_url", "https://chatgsc.streamlit.app")
 
 # Inizializza client Supabase
 @st.cache_resource
@@ -174,7 +191,7 @@ def extract_and_use_code(return_url):
             'client_secret': st.secrets.get("google_oauth_client_secret"),
             'code': auth_code,
             'grant_type': 'authorization_code',
-            'redirect_uri': 'https://chatgsc.streamlit.app'
+            'redirect_uri': APP_URL
         }
         
         response = requests.post(token_url, data=data)
@@ -215,7 +232,7 @@ def exchange_direct_oauth_code(auth_code):
             'client_secret': st.secrets.get("google_oauth_client_secret"),
             'code': auth_code,
             'grant_type': 'authorization_code',
-            'redirect_uri': 'https://chatgsc.streamlit.app'
+            'redirect_uri': APP_URL
         }
         
         response = requests.post(token_url, data=data)
@@ -284,7 +301,7 @@ def get_google_provider_token():
 
 def handle_oauth_callback():
     """Gestisce il callback OAuth e completa l'autenticazione"""
-    query_params = st.query_params
+    query_params = get_query_params()
     
     if 'code' in query_params:
         auth_code = query_params['code']
@@ -318,7 +335,7 @@ def handle_oauth_callback():
                 test_success = test_google_credentials()
                 
                 # Pulisci URL e stato
-                st.query_params.clear()
+                clear_query_params()
                 if hasattr(st.session_state, 'auth_url'):
                     del st.session_state.auth_url
                 
@@ -333,12 +350,12 @@ def handle_oauth_callback():
                 st.rerun()
             else:
                 st.error("❌ Errore durante il completamento del login: Sessione non valida")
-                st.query_params.clear()
+                clear_query_params()
                 
         except Exception as e:
             st.error(f"❌ Errore nel callback OAuth: {e}")
             # In caso di errore, pulisci tutto
-            st.query_params.clear()
+            clear_query_params()
             st.session_state.authenticated = False
             if hasattr(st.session_state, 'auth_url'):
                 del st.session_state.auth_url
@@ -346,7 +363,7 @@ def handle_oauth_callback():
     elif 'error' in query_params:
         error_description = query_params.get('error_description', 'Errore sconosciuto')
         st.error(f"❌ Errore di autenticazione: {error_description}")
-        st.query_params.clear()
+        clear_query_params()
         if hasattr(st.session_state, 'auth_url'):
             del st.session_state.auth_url
 
@@ -373,7 +390,7 @@ def test_google_credentials():
 def handle_oauth_login():
     """Gestisce il login OAuth con Google tramite Supabase"""
     try:
-        redirect_url = "https://chatgsc.streamlit.app"
+        redirect_url = APP_URL
         
         auth_response = supabase.auth.sign_in_with_oauth({
             "provider": "google",
@@ -714,8 +731,8 @@ Client ID attuale: {st.secrets.get('google_oauth_client_id', 'NON CONFIGURATO')}
                     
                     st.markdown("**2. Authorized redirect URIs nel Google Cloud Console:**")
                     st.markdown("Questi URI DEVONO essere configurati:")
-                    st.code("""
-https://chatgsc.streamlit.app
+                    st.code(f"""
+{APP_URL}
 https://yitqdfdkeljllaplfgar.supabase.co/auth/v1/callback
 """)
                     
@@ -754,7 +771,7 @@ Additional Scopes: openid email profile https://www.googleapis.com/auth/webmaste
                 
                 params = {
                     'client_id': client_id,
-                    'redirect_uri': 'https://chatgsc.streamlit.app',
+                    'redirect_uri': APP_URL,
                     'scope': 'https://www.googleapis.com/auth/webmasters.readonly',
                     'response_type': 'code',
                     'access_type': 'offline',
@@ -774,7 +791,7 @@ Additional Scopes: openid email profile https://www.googleapis.com/auth/webmaste
                 
                 return_url = st.text_area(
                     "Incolla qui l'URL completo della pagina di ritorno:",
-                    placeholder="https://chatgsc.streamlit.app?code=4/0AcvDMrA...",
+                    placeholder=f"{APP_URL}?code=4/0AcvDMrA...",
                     key="return_url_manual"
                 )
                 
@@ -829,7 +846,7 @@ Additional Scopes: openid email profile https://www.googleapis.com/auth/webmaste
                 google_oauth_url = "https://accounts.google.com/o/oauth2/v2/auth"
                 params = {
                     'client_id': st.secrets.get("google_oauth_client_id"),
-                    'redirect_uri': 'https://chatgsc.streamlit.app',
+                    'redirect_uri': APP_URL,
                     'scope': 'openid email profile https://www.googleapis.com/auth/webmasters.readonly',
                     'response_type': 'code',
                     'access_type': 'offline',
