@@ -388,8 +388,7 @@ def main():
             
             st.markdown(f"""
             <div class="user-info">
-                <h4>👤 Utente Connesso</h4>
-                <p><strong>Email:</strong> {st.session_state.user_email}</p>
+                <h4>📡 On air!</h4>
             </div>
             """, unsafe_allow_html=True)
             
@@ -403,9 +402,9 @@ def main():
             st.subheader("⚙️ Modalità di Analisi")
             analysis_mode = st.radio(
                 "Scegli come analizzare i dati:",
-                ["🔍 Google Search Console Diretto", "📊 BigQuery (Avanzato)"],
+                ["🔍 Google Search Console", "📊 BigQuery"],
                 key="analysis_mode_selector",
-                help="GSC Diretto: Più semplice, dati in tempo reale\nBigQuery: Più potente, richiede export GSC → BQ"
+                help="Google Search Console: Più semplice, dati in tempo reale\nBigQuery: Più potente, richiede export GSC → BQ"
             )
             
             st.session_state.analysis_mode = analysis_mode
