@@ -1,139 +1,3 @@
-else:  # bigquery mode
-        st.write("Oppure prova una di queste domande rapide (BigQuery):")
-        preset_questions_data = [
-            ("Perf. Totale (7gg)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 7 giorni?"),
-            ("Perf. Totale (28gg)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 28 giorni?"),
-            ("Query Top (7gg)", "Quali sono le top 10 query per clic negli ultimi 7 giorni?"),
-            ("Pagine Top (7gg)", "Quali sono le top 10 pagine per impressioni negli ultimi 7 giorni?"),
-            ("Clic MoM", "Confronta i clic totali del mese scorso con quelli di due mesi fa."),
-            ("Query in Calo", "Quali query hanno avuto il maggior calo di clic negli ultimi 28 giorni?"),
-            ("Pagine Nuove", "Quali pagine hanno ricevuto impressioni negli ultimi 7 giorni ma non nei 7 precedenti?"),
-            ("CTR Migliore", "Quali query hanno il CTR più alto negli ultimi 30 giorni (min 100 impressioni)?")
-        ]
-
-    cols = st.columns(4)
-    for i, (label, question_text) in enumerate(preset_questions_data):
-        col_idx = i % 4
-        if cols[col_idx].button(label, key=f"preset_q_{i}"):
-            user_question_input = question_text
-            submit_button_main = True
-
-    # Processamento domanda
-    if submit_button_main and user_question_input:
-        if st.session_state.data_source_mode == "gsc_api":
-            # Modalità API GSC
-            if st.session_state.gsc_data.empty:
-                st.error("🤖💬 Carica prima i dati GSC usando il pulsante 'Carica Dati GSC' nella sidebar.")
-            else:
-                # Analizza con AI usando i dati GSC
-                with st.spinner(f"🤖💬 Sto analizzando i dati GSC per: \"{user_question_input}\""):
-                    summary, result_df = query_gsc_with_natural_language(user_question_input, st.session_state.gsc_data)
-                
-                if summary and not result_df.empty:
-                    with st.chat_message("ai", avatar="🤖"):
-                        st.markdown(summary)
-                    
-                    with st.expander("🔍 Risultati Dettagliati", expanded=False):
-                        st.dataframe(result_df)
-                        st.write(f"**Righe risultato:** {len(result_df)}")
-                    
-                    # Generazione grafico se abilitata
-                    if enable_chart_generation and not result_df.empty:
-                        st.markdown("---")
-                        st.subheader("📊 Visualizzazione Grafica")
-                        # TODO: Implementare generazione grafico per dati GSC
-                        st.info("🚧 Generazione grafici per API GSC in sviluppo...")
-                else:
-                    st.warning("🤖💬 Non è stato possibile analizzare i dati o non ci sono risultati.")
-        
-        else:
-            # Modalità BigQuery (codice esistente)
-            # Reset risultati precedenti
-            st.session_state.sql_query = ""
-            st.session_state.query_results = None
-            st.session_state.results_summary = ""
-            
-            # Genera SQL
-            with st.spinner(f"🤖💬 Sto generando la query SQL per: \"{user_question_input}\""):
-                sql_query = generate_sql_from_question(
-                    st.session_state.selected_project_id, 
-                    gcp_location, 
-                    TARGET_GEMINI_MODEL, 
-                    user_question_input,
-                    st.session_state.table_schema_for_prompt, 
-                    ""
-                )
-
-            if sql_query:
-                with st.expander("🔍 Dettagli Tecnici", expanded=False):
-                    st.subheader("Query SQL Generata:")
-                    st.code(sql_query, language='sql')
-                
-                    # Esegui query
-                    query_results = execute_bigquery_query(st.session_state.selected_project_id, sql_query)
-
-                    if query_results is not None:
-                        st.subheader("Risultati Grezzi (Prime 200 righe):")
-                        if query_results.empty:
-                            st.info("La query non ha restituito risultati.")
-                        else:
-                            st.dataframe(query_results.head(200))
-                
-                if query_results is not None and not query_results.empty:
-                    # Genera riassunto
-                    with st.spinner("🤖💬 Sto generando un riassunto dei risultati..."):
-                        results_summary = summarize_results_with_llm(
-                            st.session_state.selected_project_id, 
-                            gcp_location, 
-                            TARGET_GEMINI_MODEL, 
-                            query_results, 
-                            user_question_input
-                        )
-                    
-                    if results_summary and results_summary != "Non ci sono dati da riassumere.":
-                        with st.chat_message("ai", avatar="🤖"):
-                            st.markdown(results_summary) 
-                    elif query_results.empty or results_summary == "Non ci sono dati da riassumere.": 
-                         st.info("🤖💬 La query non ha restituito risultati da riassumere o non ci sono dati.")
-                    else: 
-                        st.warning("🤖💬 Non è stato possibile generare un riassunto, ma la query ha prodotto risultati (vedi dettagli tecnici).")
-
-                    # --- SEZIONE GENERAZIONE GRAFICO ---
-                    if enable_chart_generation and not query_results.empty:
-                        st.markdown("---")
-                        st.subheader("📊 Visualizzazione Grafica (Beta)")
-                        with st.spinner("🤖💬 Sto generando il codice per il grafico..."):
-                            chart_code = generate_chart_code_with_llm(
-                                st.session_state.selected_project_id, 
-                                gcp_location, 
-                                CHART_GENERATION_MODEL,
-                                user_question_input, 
-                                sql_query, 
-                                query_results
-                            )
-                        
-                        if chart_code:
-                            try:
-                                exec_scope = {
-                                    "plt": plt, 
-                                    "pd": pd, 
-                                    "df": query_results.copy(),
-                                    "fig": None
-                                }
-                                exec(chart_code, exec_scope)
-                                fig_generated = exec_scope.get("fig")
-
-                                if fig_generated is not None:
-                                    st.pyplot(fig_generated)
-                                else:
-                                    st.warning("🤖💬 L'AI ha generato codice, ma non è stato possibile creare un grafico ('fig' non trovata).")
-                                    with st.expander("Vedi codice grafico generato (Debug)"):
-                                        st.code(chart_code, language="python")
-                            except Exception as e:
-                                st.error(f"🤖💬 Errore durante l'esecuzione del codice del grafico: {e}")
-                                with st.expander("Vedi codice grafico generato (che ha causato l'errore)"):
-                                    st.code(chart_code, language="python")
-                        elif enable_chart_generation:import streamlit as st
 from google.cloud import aiplatform # type: ignore
 from google.cloud import bigquery # type: ignore
 import vertexai # type: ignore
@@ -322,11 +186,122 @@ def get_gsc_sites():
         sites_response = service.sites().list().execute()
         sites = sites_response.get('siteEntry', [])
         
-        return [site['siteUrl'] for site in sites]
+        return [{'url': site['siteUrl'], 'permission': site['permissionLevel']} for site in sites]
         
     except Exception as e:
         st.error(f"Errore nel recupero dei siti GSC: {e}")
         return []
+
+def fetch_gsc_data(site_url: str, start_date: str, end_date: str, dimensions=['query'], row_limit=1000):
+    """Recupera dati direttamente da Google Search Console API"""
+    if not st.session_state.get('authenticated', False):
+        st.error("🤖💬 Utente non autenticato")
+        return None
+    
+    try:
+        # Crea credenziali
+        credentials = Credentials(
+            token=st.session_state.access_token,
+            refresh_token=st.session_state.refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=st.secrets.get("google_oauth_client_id"),
+            client_secret=st.secrets.get("google_oauth_client_secret"),
+            scopes=['https://www.googleapis.com/auth/webmasters.readonly']
+        )
+        
+        # Costruisci il servizio GSC
+        service = build('searchconsole', 'v1', credentials=credentials)
+        
+        # Prepara la richiesta
+        request = {
+            'startDate': start_date,
+            'endDate': end_date,
+            'dimensions': dimensions,
+            'rowLimit': row_limit,
+            'aggregationType': 'auto'
+        }
+        
+        # Esegui la query
+        response = service.searchanalytics().query(siteUrl=site_url, body=request).execute()
+        
+        # Converti in DataFrame
+        if 'rows' in response:
+            data = []
+            for row in response['rows']:
+                row_data = {}
+                
+                # Aggiungi le dimensioni
+                if 'keys' in row:
+                    for i, dimension in enumerate(dimensions):
+                        row_data[dimension] = row['keys'][i] if i < len(row['keys']) else None
+                
+                # Aggiungi le metriche
+                row_data['clicks'] = row.get('clicks', 0)
+                row_data['impressions'] = row.get('impressions', 0)
+                row_data['ctr'] = row.get('ctr', 0.0)
+                row_data['position'] = row.get('position', 0.0)
+                
+                data.append(row_data)
+            
+            df = pd.DataFrame(data)
+            return df
+        else:
+            st.info("🤖💬 Nessun dato trovato per il periodo specificato")
+            return pd.DataFrame()
+            
+    except Exception as e:
+        st.error(f"🤖💬 Errore nel recupero dati GSC: {e}")
+        return None
+
+def generate_dataframe_analysis(project_id: str, location: str, model_name: str, question: str, df: pd.DataFrame) -> str | None:
+    """Genera analisi AI su DataFrame invece che SQL"""
+    if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
+        st.error("🤖💬 Le credenziali GCP non sono state configurate.")
+        return None
+    if df.empty:
+        return "Non ci sono dati da analizzare."
+    if not all([project_id, location, model_name, question]):
+        st.error("🤖💬 Mancano alcuni parametri per la generazione dell'analisi.")
+        return None
+
+    try:
+        vertexai.init(project=project_id, location=location) 
+        model = GenerativeModel(model_name)
+        
+        # Prepara informazioni sul DataFrame
+        df_info = {
+            'columns': list(df.columns),
+            'shape': df.shape,
+            'sample_data': df.head(10).to_string(index=False),
+            'data_types': df.dtypes.to_dict()
+        }
+        
+        prompt_parts = [
+            "Sei un esperto analista di dati di Google Search Console. Ti viene fornito un DataFrame con dati GSC e una domanda dell'utente.",
+            f"Domanda dell'utente: \"{question}\"",
+            f"\nInformazioni sul DataFrame:",
+            f"- Colonne disponibili: {df_info['columns']}",
+            f"- Numero di righe: {df_info['shape'][0]}",
+            f"- Tipi di dati: {df_info['data_types']}",
+            f"\nCampione di dati (prime 10 righe):",
+            df_info['sample_data'],
+            "\nAnalizza i dati e rispondi alla domanda dell'utente in modo chiaro e conciso.",
+            "Metti in grassetto (usando **testo**) le metriche e i dati più importanti.",
+            "Se necessario, calcola aggregazioni, trend o confronti basati sui dati forniti."
+        ]
+        
+        full_prompt = "\n".join(prompt_parts)
+        generation_config = GenerationConfig(temperature=0.3, max_output_tokens=1024)
+        response = model.generate_content(full_prompt, generation_config=generation_config)
+        
+        if not response.candidates or not response.candidates[0].content.parts:
+            st.error("🤖💬 Il modello non ha restituito una risposta valida.")
+            return None
+        
+        return response.candidates[0].content.parts[0].text.strip()
+    except Exception as e:
+        st.error(f"🤖💬 Errore durante l'analisi AI: {e}") 
+        return None
 
 # --- Setup Credenziali GCP tramite OAuth ---
 def setup_gcp_credentials_from_oauth():
@@ -377,6 +352,8 @@ if 'user_email' not in st.session_state:
     st.session_state.user_email = ""
 if 'gsc_sites' not in st.session_state:
     st.session_state.gsc_sites = []
+if 'gsc_sites_data' not in st.session_state:
+    st.session_state.gsc_sites_data = []
 if 'selected_site' not in st.session_state:
     st.session_state.selected_site = ""
 if 'selected_project_id' not in st.session_state:
@@ -385,154 +362,14 @@ if 'config_applied_successfully' not in st.session_state:
     st.session_state.config_applied_successfully = False
 if 'table_schema_for_prompt' not in st.session_state:
     st.session_state.table_schema_for_prompt = ""
-if 'data_source_mode' not in st.session_state:
-    st.session_state.data_source_mode = "gsc_api"  # "gsc_api" o "bigquery"
+if 'analysis_mode' not in st.session_state:
+    st.session_state.analysis_mode = "🔍 Google Search Console Diretto"
+if 'gsc_config' not in st.session_state:
+    st.session_state.gsc_config = None
 if 'gsc_data' not in st.session_state:
-    st.session_state.gsc_data = pd.DataFrame()
-
-# --- Funzioni per GSC API ---
-def get_gsc_data(site_url: str, start_date: str, end_date: str, dimensions: list = None, filters: list = None) -> pd.DataFrame:
-    """Recupera dati da Google Search Console API"""
-    if not st.session_state.get('authenticated', False):
-        st.error("🤖💬 Utente non autenticato")
-        return pd.DataFrame()
-    
-    try:
-        # Usa il token OAuth per accedere a Google Search Console
-        credentials = Credentials(
-            token=st.session_state.access_token,
-            refresh_token=st.session_state.refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=st.secrets.get("google_oauth_client_id"),
-            client_secret=st.secrets.get("google_oauth_client_secret"),
-            scopes=['https://www.googleapis.com/auth/webmasters.readonly']
-        )
-        
-        # Costruisci il servizio GSC
-        service = build('searchconsole', 'v1', credentials=credentials)
-        
-        # Prepara la richiesta
-        request_body = {
-            'startDate': start_date,
-            'endDate': end_date,
-            'dimensions': dimensions or ['query'],
-            'rowLimit': 25000
-        }
-        
-        if filters:
-            request_body['dimensionFilterGroups'] = filters
-        
-        # Esegui la query
-        response = service.searchanalytics().query(
-            siteUrl=site_url,
-            body=request_body
-        ).execute()
-        
-        # Converti in DataFrame
-        if 'rows' in response:
-            data = []
-            for row in response['rows']:
-                row_data = {}
-                # Aggiungi dimensioni
-                for i, dim in enumerate(dimensions or ['query']):
-                    row_data[dim] = row['keys'][i]
-                
-                # Aggiungi metriche
-                row_data['clicks'] = row.get('clicks', 0)
-                row_data['impressions'] = row.get('impressions', 0)
-                row_data['ctr'] = row.get('ctr', 0.0)
-                row_data['position'] = row.get('position', 0.0)
-                
-                data.append(row_data)
-            
-            return pd.DataFrame(data)
-        else:
-            return pd.DataFrame()
-        
-    except Exception as e:
-        st.error(f"Errore nel recupero dei dati GSC: {e}")
-        return pd.DataFrame()
-
-def query_gsc_with_natural_language(question: str, gsc_data: pd.DataFrame) -> tuple[str, pd.DataFrame]:
-    """Interroga i dati GSC usando linguaggio naturale tramite AI"""
-    if gsc_data.empty:
-        return "Non ci sono dati GSC disponibili per rispondere alla domanda.", pd.DataFrame()
-    
-    if not st.session_state.get('authenticated', False):
-        return "Utente non autenticato.", pd.DataFrame()
-    
-    try:
-        # Usa Vertex AI per analizzare la domanda e generare codice pandas
-        vertexai.init(project=st.session_state.selected_project_id, location="europe-west1") 
-        model = GenerativeModel(TARGET_GEMINI_MODEL)
-        
-        # Prepara info sui dati
-        columns_info = f"Colonne disponibili: {list(gsc_data.columns)}"
-        sample_data = gsc_data.head(3).to_string(index=False)
-        data_shape = f"Dataset: {gsc_data.shape[0]} righe, {gsc_data.shape[1]} colonne"
-        
-        prompt = f"""
-Sei un esperto analista di dati per Google Search Console. 
-Hai a disposizione un DataFrame pandas chiamato 'df' con dati GSC.
-
-{data_shape}
-{columns_info}
-
-Campione dati:
-{sample_data}
-
-Domanda dell'utente: "{question}"
-
-Genera codice Python che:
-1. Analizza il DataFrame 'df' per rispondere alla domanda
-2. Crea un nuovo DataFrame 'result_df' con i risultati
-3. Include solo operazioni pandas (filter, groupby, sort, etc.)
-4. Non include print(), display() o plotting
-
-Esempio di output:
-```python
-# Analizza i dati per rispondere alla domanda
-result_df = df.groupby('query')['clicks'].sum().sort_values(ascending=False).head(10).reset_index()
-```
-
-Restituisci SOLO il codice Python, senza spiegazioni.
-"""
-        
-        response = model.generate_content(prompt)
-        
-        if response.candidates and response.candidates[0].content.parts:
-            code = response.candidates[0].content.parts[0].text.strip()
-            
-            # Pulisci il codice
-            code = code.replace("```python", "").replace("```", "").strip()
-            
-            # Esegui il codice
-            exec_scope = {"df": gsc_data.copy(), "pd": pd, "result_df": pd.DataFrame()}
-            exec(code, exec_scope)
-            
-            result_df = exec_scope.get('result_df', pd.DataFrame())
-            
-            # Genera riassunto
-            if not result_df.empty:
-                summary_prompt = f"""
-Domanda: "{question}"
-
-Risultati ottenuti:
-{result_df.head(10).to_string(index=False)}
-
-Fornisci un riassunto conciso dei risultati in italiano, evidenziando i punti chiave con **grassetto**.
-"""
-                summary_response = model.generate_content(summary_prompt)
-                summary = summary_response.candidates[0].content.parts[0].text.strip() if summary_response.candidates else "Analisi completata."
-            else:
-                summary = "L'analisi non ha prodotto risultati."
-            
-            return summary, result_df
-        else:
-            return "Errore nella generazione del codice di analisi.", pd.DataFrame()
-            
-    except Exception as e:
-        return f"Errore nell'analisi: {e}", pd.DataFrame()
+    st.session_state.gsc_data = None
+if 'enable_chart_generation' not in st.session_state:
+    st.session_state.enable_chart_generation = False
 
 # --- Funzioni Core (mantenute uguali) ---
 def get_table_schema_for_prompt(project_id: str, dataset_id: str, table_names_str: str) -> str | None:
@@ -813,87 +650,87 @@ with st.sidebar:
             logout()
         
         st.markdown("---")
-        st.subheader("📊 Sorgente Dati")
+        st.subheader("⚙️ Modalità di Analisi")
         
-        # Selezione modalità dati
-        data_mode = st.radio(
-            "Come vuoi interrogare i tuoi dati?",
-            options=["gsc_api", "bigquery"],
-            format_func=lambda x: {
-                "gsc_api": "🔗 API Google Search Console (Diretto)",
-                "bigquery": "📊 BigQuery (SQL)"
-            }[x],
-            key="data_mode_selector",
-            help="Scegli se usare le API GSC direttamente o i dati esportati in BigQuery"
+        # Selezione modalità
+        analysis_mode = st.radio(
+            "Scegli come analizzare i dati:",
+            ["🔍 Google Search Console Diretto", "📊 BigQuery (Avanzato)"],
+            key="analysis_mode",
+            help="GSC Diretto: Più semplice, dati in tempo reale\nBigQuery: Più potente, richiede export GSC → BQ"
         )
-        st.session_state.data_source_mode = data_mode
         
-        if data_mode == "gsc_api":
-            st.markdown("### 🔗 Configurazione API GSC")
+        st.session_state.analysis_mode = analysis_mode
+        
+        if analysis_mode == "🔍 Google Search Console Diretto":
+            st.markdown("### 🌐 Configurazione GSC")
             
             # Carica siti GSC se non già fatto
-            if not st.session_state.gsc_sites:
+            if not st.session_state.get('gsc_sites_data', []):
                 with st.spinner("Caricando i tuoi siti GSC..."):
-                    st.session_state.gsc_sites = get_gsc_sites()
+                    sites_data = get_gsc_sites()
+                    st.session_state.gsc_sites_data = sites_data
             
             # Selezione sito GSC
-            if st.session_state.gsc_sites:
-                selected_site = st.selectbox(
+            if st.session_state.get('gsc_sites_data', []):
+                site_options = [f"{site['url']} ({site['permission']})" for site in st.session_state.gsc_sites_data]
+                selected_site_display = st.selectbox(
                     "🌐 Seleziona Sito GSC",
-                    options=st.session_state.gsc_sites,
-                    key="site_selector"
-                )
-                st.session_state.selected_site = selected_site
-                
-                # Configurazione periodo e dimensioni
-                col1, col2 = st.columns(2)
-                with col1:
-                    start_date = st.date_input(
-                        "📅 Data Inizio",
-                        value=pd.Timestamp.now() - pd.Timedelta(days=30),
-                        key="gsc_start_date"
-                    )
-                with col2:
-                    end_date = st.date_input(
-                        "📅 Data Fine", 
-                        value=pd.Timestamp.now() - pd.Timedelta(days=1),
-                        key="gsc_end_date"
-                    )
-                
-                dimensions = st.multiselect(
-                    "📏 Dimensioni",
-                    options=['query', 'page', 'country', 'device', 'searchAppearance'],
-                    default=['query'],
-                    help="Seleziona le dimensioni per l'analisi",
-                    key="gsc_dimensions"
+                    options=site_options,
+                    key="site_selector_gsc"
                 )
                 
-                if st.button("📥 Carica Dati GSC", key="load_gsc_data"):
-                    if selected_site and start_date and end_date:
-                        with st.spinner("Caricando dati da Google Search Console..."):
-                            st.session_state.gsc_data = get_gsc_data(
-                                selected_site,
-                                start_date.strftime('%Y-%m-%d'),
-                                end_date.strftime('%Y-%m-%d'),
-                                dimensions
-                            )
-                        
-                        if not st.session_state.gsc_data.empty:
-                            st.success(f"✅ Caricati {len(st.session_state.gsc_data)} record da GSC!")
-                            st.session_state.config_applied_successfully = True
-                            
-                            # Mostra anteprima
-                            with st.expander("👀 Anteprima Dati", expanded=False):
-                                st.dataframe(st.session_state.gsc_data.head(10))
-                                st.write(f"**Forma dataset:** {st.session_state.gsc_data.shape}")
-                        else:
-                            st.warning("⚠️ Nessun dato trovato per il periodo selezionato")
-                    else:
-                        st.error("❌ Seleziona sito e periodo validi")
+                # Estrai l'URL pulito
+                if selected_site_display:
+                    selected_site_url = selected_site_display.split(' (')[0]
+                    st.session_state.selected_site = selected_site_url
+                    
+                    # Configurazione periodo dati
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        start_date = st.date_input(
+                            "📅 Data Inizio",
+                            value=pd.Timestamp.now() - pd.Timedelta(days=30),
+                            key="gsc_start_date"
+                        )
+                    with col2:
+                        end_date = st.date_input(
+                            "📅 Data Fine", 
+                            value=pd.Timestamp.now() - pd.Timedelta(days=1),
+                            key="gsc_end_date"
+                        )
+                    
+                    # Dimensioni da includere
+                    dimensions = st.multiselect(
+                        "📊 Dimensioni",
+                        options=['query', 'page', 'country', 'device', 'searchAppearance'],
+                        default=['query'],
+                        key="gsc_dimensions"
+                    )
+                    
+                    row_limit = st.number_input(
+                        "📈 Limite Righe",
+                        min_value=100,
+                        max_value=25000,
+                        value=1000,
+                        step=100,
+                        key="gsc_row_limit"
+                    )
+                    
+                    st.session_state.gsc_config = {
+                        'site_url': selected_site_url,
+                        'start_date': start_date.strftime('%Y-%m-%d'),
+                        'end_date': end_date.strftime('%Y-%m-%d'),
+                        'dimensions': dimensions,
+                        'row_limit': row_limit
+                    }
+                    
+                    st.session_state.config_applied_successfully = True
+                    st.success("🟢 Configurazione GSC attiva")
             else:
                 st.warning("Nessun sito GSC trovato per il tuo account")
-        
-        elif data_mode == "bigquery":
+                
+        else:  # BigQuery Mode
             st.markdown("### 📊 Configurazione BigQuery")
             
             # Configurazione progetto GCP
@@ -921,10 +758,15 @@ with st.sidebar:
                 help="Tabelle GSC separate da virgola"
             )
             
-            if st.button("✅ Applica Configurazione BigQuery", key="apply_bq_config"):
+            # Applica configurazione BigQuery
+            if st.button("✅ Applica Configurazione BigQuery", key="apply_config_bq"):
                 if all([gcp_project_id, gcp_location, bq_dataset_id, bq_table_names_str]):
                     if setup_gcp_credentials_from_oauth():
                         st.session_state.selected_project_id = gcp_project_id
+                        st.session_state.gcp_location = gcp_location
+                        st.session_state.bq_dataset_id = bq_dataset_id
+                        st.session_state.bq_table_names_str = bq_table_names_str
+                        st.session_state.config_applied_successfully = True
                         
                         # Carica schema tabelle
                         with st.spinner("Caricando schema tabelle..."):
@@ -934,25 +776,15 @@ with st.sidebar:
                         
                         if st.session_state.table_schema_for_prompt:
                             st.success("✅ Configurazione BigQuery applicata!")
-                            st.session_state.config_applied_successfully = True
+                            st.rerun()
                         else:
                             st.error("❌ Errore nel caricamento dello schema")
                     else:
                         st.error("❌ Errore nella configurazione delle credenziali")
                 else:
                     st.error("❌ Compila tutti i campi richiesti")
-        
-        # Opzione per grafici (per entrambe le modalità)
-        enable_chart_generation = st.checkbox(
-            "📊 Crea grafico con AI",
-            value=False,
-            key="enable_chart"
-        )
-        
-        if st.session_state.get('config_applied_successfully', False):
-            if st.session_state.data_source_mode == "gsc_api":
-                st.success("🟢 Configurazione API GSC attiva")
-            else:
+            
+            if st.session_state.get('config_applied_successfully', False) and analysis_mode == "📊 BigQuery (Avanzato)":
                 st.success("🟢 Configurazione BigQuery attiva")
 
 # --- Area Principale Chat ---
@@ -990,19 +822,33 @@ else:
         )
         submit_button_main = st.form_submit_button(label="Chiedi a ChatGSC 💬")
 
-    # Domande preimpostate basate sulla modalità
-    if st.session_state.data_source_mode == "gsc_api":
-        st.write("Oppure prova una di queste domande rapide (API GSC):")
+    # Domande preimpostate (adattate per entrambe le modalità)
+    st.write("Oppure prova una di queste domande rapide:")
+    
+    current_mode = st.session_state.get('analysis_mode', '🔍 Google Search Console Diretto')
+    
+    if current_mode == "🔍 Google Search Console Diretto":
         preset_questions_data = [
-            ("Top 10 Query", "Mostrami le top 10 query per numero di clic"),
-            ("CTR Migliori", "Quali query hanno il CTR più alto (minimo 100 impressioni)?"),
-            ("Query Lunghe", "Mostrami le query con più di 5 parole ordinate per clic"),
-            ("Pagine Top", "Quali sono le pagine con più impressioni?"),
-            ("Performance Mobile", "Come performano le query su dispositivi mobile vs desktop?"),
-            ("Query Branded", "Mostrami le query che contengono il nome del brand"),
-            ("Posizioni Basse", "Quali query hanno posizione media sopra 20 ma molte impressioni?"),
-            ("Trend CTR", "Qual è il CTR medio per fasce di posizione (1-3, 4-10, 11+)?")
-    ]
+            ("Top Query", "Quali sono le 10 query con più clic?"),
+            ("Performance Totale", "Qual è la performance totale (clic, impressioni, CTR, posizione media)?"),
+            ("Query CTR Alto", "Quali query hanno il CTR più alto (con almeno 100 impressioni)?"),
+            ("Query Pos. Bassa", "Quali query hanno posizione media sopra 10 ma con molte impressioni?"),
+            ("Trend Giornaliero", "Come sono distribuiti i clic per giorno?"),
+            ("Pagine Top", "Quali sono le 10 pagine con più impressioni?"),
+            ("Device Analysis", "Come si distribuiscono i clic per dispositivo?"),
+            ("Paesi Top", "Da quali paesi arrivano più clic?")
+        ]
+    else:
+        preset_questions_data = [
+            ("Perf. Totale (7gg)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 7 giorni?"),
+            ("Perf. Totale (28gg)", "Qual è stata la mia performance totale (clic, impressioni, CTR medio, posizione media) negli ultimi 28 giorni?"),
+            ("Query Top (7gg)", "Quali sono le top 10 query per clic negli ultimi 7 giorni?"),
+            ("Pagine Top (7gg)", "Quali sono le top 10 pagine per impressioni negli ultimi 7 giorni?"),
+            ("Clic MoM", "Confronta i clic totali del mese scorso con quelli di due mesi fa."),
+            ("Query in Calo", "Quali query hanno avuto il maggior calo di clic negli ultimi 28 giorni?"),
+            ("Pagine Nuove", "Quali pagine hanno ricevuto impressioni negli ultimi 7 giorni ma non nei 7 precedenti?"),
+            ("CTR Migliore", "Quali query hanno il CTR più alto negli ultimi 30 giorni (min 100 impressioni)?")
+        ]
 
     cols = st.columns(4)
     for i, (label, question_text) in enumerate(preset_questions_data):
@@ -1013,96 +859,194 @@ else:
 
     # Processamento domanda
     if submit_button_main and user_question_input:
-        # Reset risultati precedenti
-        st.session_state.sql_query = ""
-        st.session_state.query_results = None
-        st.session_state.results_summary = ""
+        current_mode = st.session_state.get('analysis_mode', '🔍 Google Search Console Diretto')
         
-        # Genera SQL
-        with st.spinner(f"🤖💬 Sto generando la query SQL per: \"{user_question_input}\""):
-            sql_query = generate_sql_from_question(
-                st.session_state.selected_project_id, 
-                gcp_location, 
-                TARGET_GEMINI_MODEL, 
-                user_question_input,
-                st.session_state.table_schema_for_prompt, 
-                ""
-            )
-
-        if sql_query:
-            with st.expander("🔍 Dettagli Tecnici", expanded=False):
-                st.subheader("Query SQL Generata:")
-                st.code(sql_query, language='sql')
-            
-                # Esegui query
-                query_results = execute_bigquery_query(st.session_state.selected_project_id, sql_query)
-
-                if query_results is not None:
-                    st.subheader("Risultati Grezzi (Prime 200 righe):")
-                    if query_results.empty:
-                        st.info("La query non ha restituito risultati.")
-                    else:
-                        st.dataframe(query_results.head(200))
-            
-            if query_results is not None and not query_results.empty:
-                # Genera riassunto
-                with st.spinner("🤖💬 Sto generando un riassunto dei risultati..."):
-                    results_summary = summarize_results_with_llm(
-                        st.session_state.selected_project_id, 
-                        gcp_location, 
-                        TARGET_GEMINI_MODEL, 
-                        query_results, 
-                        user_question_input
-                    )
+        if current_mode == "🔍 Google Search Console Diretto":
+            # Modalità GSC Diretta
+            if not st.session_state.get('gsc_config'):
+                st.error("🤖💬 Per favore, completa la configurazione GSC nella sidebar.")
+            else:
+                # Reset risultati precedenti
+                st.session_state.gsc_data = None
+                st.session_state.results_summary = ""
                 
-                if results_summary and results_summary != "Non ci sono dati da riassumere.":
-                    with st.chat_message("ai", avatar="🤖"):
-                        st.markdown(results_summary) 
-                elif query_results.empty or results_summary == "Non ci sono dati da riassumere.": 
-                     st.info("🤖💬 La query non ha restituito risultati da riassumere o non ci sono dati.")
-                else: 
-                    st.warning("🤖💬 Non è stato possibile generare un riassunto, ma la query ha prodotto risultati (vedi dettagli tecnici).")
+                config = st.session_state.gsc_config
+                
+                # Fetch dati da GSC
+                with st.spinner(f"🤖💬 Recuperando dati da Google Search Console per: \"{user_question_input}\""):
+                    gsc_data = fetch_gsc_data(
+                        config['site_url'],
+                        config['start_date'], 
+                        config['end_date'],
+                        config['dimensions'],
+                        config['row_limit']
+                    )
 
-                # --- SEZIONE GENERAZIONE GRAFICO ---
-                if enable_chart_generation and not query_results.empty:
-                    st.markdown("---")
-                    st.subheader("📊 Visualizzazione Grafica (Beta)")
-                    with st.spinner("🤖💬 Sto generando il codice per il grafico..."):
-                        chart_code = generate_chart_code_with_llm(
-                            st.session_state.selected_project_id, 
-                            gcp_location, 
-                            CHART_GENERATION_MODEL,
-                            user_question_input, 
-                            sql_query, 
-                            query_results
-                        )
+                if gsc_data is not None and not gsc_data.empty:
+                    with st.expander("🔍 Dati GSC Recuperati", expanded=False):
+                        st.subheader("Dataset GSC:")
+                        st.write(f"**Sito:** {config['site_url']}")
+                        st.write(f"**Periodo:** {config['start_date']} - {config['end_date']}")
+                        st.write(f"**Dimensioni:** {', '.join(config['dimensions'])}")
+                        st.write(f"**Righe:** {len(gsc_data)}")
+                        st.dataframe(gsc_data.head(200))
                     
-                    if chart_code:
-                        try:
-                            exec_scope = {
-                                "plt": plt, 
-                                "pd": pd, 
-                                "df": query_results.copy(),
-                                "fig": None
-                            }
-                            exec(chart_code, exec_scope)
-                            fig_generated = exec_scope.get("fig")
+                    # Genera analisi AI
+                    with st.spinner("🤖💬 Sto analizzando i dati con l'AI..."):
+                        # Usa un progetto GCP di default per Vertex AI (potrebbe essere configurabile)
+                        analysis_project = st.session_state.get('selected_project_id', 'your-default-project')
+                        if not analysis_project or analysis_project == 'your-default-project':
+                            st.warning("🤖💬 Nessun progetto GCP configurato per l'analisi AI. Configura BigQuery per usare Vertex AI.")
+                            analysis_summary = "Analisi AI non disponibile - configura un progetto GCP."
+                        else:
+                            analysis_summary = generate_dataframe_analysis(
+                                analysis_project,
+                                "europe-west1",
+                                TARGET_GEMINI_MODEL,
+                                user_question_input,
+                                gsc_data
+                            )
+                    
+                    if analysis_summary and analysis_summary != "Non ci sono dati da analizzare.":
+                        with st.chat_message("ai", avatar="🤖"):
+                            st.markdown(analysis_summary) 
+                    else: 
+                        st.info("🤖💬 Non è stato possibile generare un'analisi per questi dati.")
 
-                            if fig_generated is not None:
-                                st.pyplot(fig_generated)
+                    # --- SEZIONE GENERAZIONE GRAFICO GSC ---
+                    if enable_chart_generation and not gsc_data.empty:
+                        st.markdown("---")
+                        st.subheader("📊 Visualizzazione Grafica (Beta)")
+                        with st.spinner("🤖💬 Sto generando il codice per il grafico..."):
+                            analysis_project = st.session_state.get('selected_project_id', '')
+                            if analysis_project:
+                                chart_code = generate_chart_code_with_llm(
+                                    analysis_project, 
+                                    "europe-west1", 
+                                    CHART_GENERATION_MODEL,
+                                    user_question_input, 
+                                    "Dati GSC diretti", 
+                                    gsc_data
+                                )
+                                
+                                if chart_code:
+                                    try:
+                                        exec_scope = {
+                                            "plt": plt, 
+                                            "pd": pd, 
+                                            "df": gsc_data.copy(),
+                                            "fig": None
+                                        }
+                                        exec(chart_code, exec_scope)
+                                        fig_generated = exec_scope.get("fig")
+
+                                        if fig_generated is not None:
+                                            st.pyplot(fig_generated)
+                                        else:
+                                            st.warning("🤖💬 L'AI ha generato codice, ma non è stato possibile creare un grafico.")
+                                    except Exception as e:
+                                        st.error(f"🤖💬 Errore durante l'esecuzione del codice del grafico: {e}")
                             else:
-                                st.warning("🤖💬 L'AI ha generato codice, ma non è stato possibile creare un grafico ('fig' non trovata).")
-                                with st.expander("Vedi codice grafico generato (Debug)"):
-                                    st.code(chart_code, language="python")
-                        except Exception as e:
-                            st.error(f"🤖💬 Errore durante l'esecuzione del codice del grafico: {e}")
-                            with st.expander("Vedi codice grafico generato (che ha causato l'errore)"):
-                                st.code(chart_code, language="python")
-                    elif enable_chart_generation:
-                        st.warning("🤖💬 Non è stato possibile generare il codice per il grafico.")
-                # --- FINE SEZIONE GENERAZIONE GRAFICO ---
+                                st.warning("🤖💬 Configura un progetto GCP per generare grafici.")
+                elif gsc_data is not None:
+                    st.info("🤖💬 Nessun dato trovato per i parametri specificati.")
+                else:
+                    st.error("🤖💬 Errore nel recupero dei dati da Google Search Console.")
+        
         else:
-            st.error("Non è stato possibile generare una query SQL per la tua domanda.")
+            # Modalità BigQuery (logica esistente)
+            if not st.session_state.config_applied_successfully:
+                st.error("🤖💬 Per favore, completa e applica la configurazione BigQuery nella sidebar.")
+            elif not st.session_state.table_schema_for_prompt: 
+                st.error("🤖💬 Lo schema delle tabelle non è disponibile. Verifica la configurazione BigQuery.")
+            else:
+                # Reset risultati precedenti
+                st.session_state.sql_query = ""
+                st.session_state.query_results = None
+                st.session_state.results_summary = ""
+                
+                # Genera SQL
+                with st.spinner(f"🤖💬 Sto generando la query SQL per: \"{user_question_input}\""):
+                    sql_query = generate_sql_from_question(
+                        st.session_state.selected_project_id, 
+                        st.session_state.get('gcp_location', 'europe-west1'), 
+                        TARGET_GEMINI_MODEL, 
+                        user_question_input,
+                        st.session_state.table_schema_for_prompt, 
+                        ""
+                    )
+
+                if sql_query:
+                    with st.expander("🔍 Dettagli Tecnici", expanded=False):
+                        st.subheader("Query SQL Generata:")
+                        st.code(sql_query, language='sql')
+                    
+                        # Esegui query
+                        query_results = execute_bigquery_query(st.session_state.selected_project_id, sql_query)
+
+                        if query_results is not None:
+                            st.subheader("Risultati Grezzi (Prime 200 righe):")
+                            if query_results.empty:
+                                st.info("La query non ha restituito risultati.")
+                            else:
+                                st.dataframe(query_results.head(200))
+                    
+                    if query_results is not None and not query_results.empty:
+                        # Genera riassunto
+                        with st.spinner("🤖💬 Sto generando un riassunto dei risultati..."):
+                            results_summary = summarize_results_with_llm(
+                                st.session_state.selected_project_id, 
+                                st.session_state.get('gcp_location', 'europe-west1'), 
+                                TARGET_GEMINI_MODEL, 
+                                query_results, 
+                                user_question_input
+                            )
+                        
+                        if results_summary and results_summary != "Non ci sono dati da riassumere.":
+                            with st.chat_message("ai", avatar="🤖"):
+                                st.markdown(results_summary) 
+                        else: 
+                            st.warning("🤖💬 Non è stato possibile generare un riassunto, ma la query ha prodotto risultati.")
+
+                        # --- SEZIONE GENERAZIONE GRAFICO BIGQUERY ---
+                        if enable_chart_generation and not query_results.empty:
+                            st.markdown("---")
+                            st.subheader("📊 Visualizzazione Grafica (Beta)")
+                            with st.spinner("🤖💬 Sto generando il codice per il grafico..."):
+                                chart_code = generate_chart_code_with_llm(
+                                    st.session_state.selected_project_id, 
+                                    st.session_state.get('gcp_location', 'europe-west1'), 
+                                    CHART_GENERATION_MODEL,
+                                    user_question_input, 
+                                    sql_query, 
+                                    query_results
+                                )
+                                
+                                if chart_code:
+                                    try:
+                                        exec_scope = {
+                                            "plt": plt, 
+                                            "pd": pd, 
+                                            "df": query_results.copy(),
+                                            "fig": None
+                                        }
+                                        exec(chart_code, exec_scope)
+                                        fig_generated = exec_scope.get("fig")
+
+                                        if fig_generated is not None:
+                                            st.pyplot(fig_generated)
+                                        else:
+                                            st.warning("🤖💬 L'AI ha generato codice, ma non è stato possibile creare un grafico.")
+                                    except Exception as e:
+                                        st.error(f"🤖💬 Errore durante l'esecuzione del codice del grafico: {e}")
+                                else:
+                                    st.warning("🤖💬 Non è stato possibile generare il codice per il grafico.")
+                    elif query_results is not None:
+                        st.info("🤖💬 La query non ha restituito risultati.")
+                    else:
+                        st.error("🤖💬 Errore nell'esecuzione della query BigQuery.")
+                else:
+                    st.error("Non è stato possibile generare una query SQL per la tua domanda.")
 
 # --- Footer ---
 st.markdown("---")
