@@ -144,7 +144,7 @@ class BigQueryMode:
             response = self.openai_client.chat.completions.create(
                 model=self.OPENAI_MODEL,
                 messages=[{"role": "user", "content": full_prompt}],
-                temperature=0.1,
+                temperature=1,
                 max_completion_tokens=1024,
             )
 
@@ -209,7 +209,7 @@ Metti in grassetto (usando **testo**) le metriche e i dati più importanti.
             response = self.openai_client.chat.completions.create(
                 model=self.OPENAI_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
+                temperature=1,
                 max_completion_tokens=512,
             )
             if not response.choices or not response.choices[0].message.content:
