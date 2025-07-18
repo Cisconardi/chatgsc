@@ -307,6 +307,10 @@ else:
         """Renderizza la configurazione nella sidebar"""
         st.markdown("### 🌐 Configurazione GSC")
         
+        # Debug info se necessario
+        if not self.session_state.get('credentials_verified', False):
+            st.warning("⚠️ Credenziali non ancora verificate. Il primo accesso potrebbe richiedere un momento.")
+        
         # Carica siti GSC se non già fatto
         if not self.session_state.get('gsc_sites_data', []):
             with st.spinner("Caricando i tuoi siti GSC..."):
