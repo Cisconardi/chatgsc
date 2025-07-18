@@ -258,7 +258,7 @@ Restituisci SOLO il codice Python.
             response = self.openai_client.chat.completions.create(
                 model=self.OPENAI_MODEL,
                 messages=[{"role": "user", "content": chart_prompt}],
-                temperature=0.2,
+                temperature=1,
                 # Use 'max_completion_tokens' for wider compatibility with
                 # models that do not accept the 'max_tokens' parameter.
                 max_completion_tokens=512,
