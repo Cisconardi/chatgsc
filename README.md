@@ -159,6 +159,10 @@ User Question → AI → SQL → BigQuery → DataFrame → AI Summary → Respo
 - ✅ Verifica permessi IAM del progetto
 - ✅ Controlla nome progetto nei secrets
 
+**"ACCESS_TOKEN_SCOPE_INSUFFICIENT"**
+- ✅ Revoca l'autorizzazione dell'app dal tuo [Google Account](https://myaccount.google.com/permissions)
+- ✅ Esegui nuovamente il login per includere gli scope BigQuery
+
 **"OpenAI authentication failed"**
 - ✅ Verifica API key OpenAI
 - ✅ Controlla quota e limiti

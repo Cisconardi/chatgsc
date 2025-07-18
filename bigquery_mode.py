@@ -7,6 +7,7 @@ import json
 from google.cloud import bigquery
 import openai
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 
 class BigQueryMode:
     """Classe per gestire la modalità BigQuery Avanzata"""
@@ -24,7 +25,7 @@ class BigQueryMode:
         """Configura le credenziali GCP usando il token OAuth"""
         if not self.session_state.get('authenticated', False):
             return False
-        
+
         try:
             # Crea credenziali Google Cloud usando il token OAuth
             credentials = Credentials(
@@ -39,7 +40,12 @@ class BigQueryMode:
                     'https://www.googleapis.com/auth/bigquery.readonly'
                 ]
             )
-            
+
+            # Aggiorna i token se necessario e salva l'oggetto credenziali
+            if credentials.expired:
+                credentials.refresh(Request())
+            self.session_state.gcp_credentials = credentials
+
             # Salva le credenziali temporaneamente
             temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
             creds_info = {
@@ -54,7 +60,7 @@ class BigQueryMode:
             
             os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_file.name
             self.session_state.temp_credentials_file = temp_file.name
-            
+
             return True
             
         except Exception as e:
@@ -76,7 +82,7 @@ class BigQueryMode:
             return None
         
         try:
-            client = bigquery.Client(project=project_id) 
+            client = bigquery.Client(project=project_id, credentials=self.session_state.get('gcp_credentials'))
         except Exception as e:
             st.error(f"🤖💬 Impossibile inizializzare il client BigQuery: {e}. Verifica le credenziali e i permessi.")
             return None
@@ -170,7 +176,7 @@ class BigQueryMode:
             st.error("🤖💬 ID Progetto e query SQL sono necessari per l'esecuzione su BigQuery.")
             return None
         try:
-            client = bigquery.Client(project=project_id) 
+            client = bigquery.Client(project=project_id, credentials=self.session_state.get('gcp_credentials'))
             query_job = client.query(sql_query)
             results_df = query_job.to_dataframe() 
             return results_df
