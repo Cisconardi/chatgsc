@@ -142,20 +142,47 @@ def logout():
     except Exception as e:
         st.error(f"Errore durante il logout: {e}")
 
-def get_gsc_sites():
-    """Recupera i siti disponibili da Google Search Console"""
-    if not st.session_state.get('authenticated', False):
-        return []
-    
+def refresh_credentials():
+    """Aggiorna i token OAuth se necessario"""
     try:
+        from google.auth.transport.requests import Request
+        
         credentials = Credentials(
             token=st.session_state.access_token,
             refresh_token=st.session_state.refresh_token,
             token_uri="https://oauth2.googleapis.com/token",
             client_id=st.secrets.get("google_oauth_client_id"),
             client_secret=st.secrets.get("google_oauth_client_secret"),
-            scopes=['https://www.googleapis.com/auth/webmasters.readonly']
+            scopes=['https://www.googleapis.com/auth/webmasters.readonly', 
+                   'https://www.googleapis.com/auth/cloud-platform.read-only']
         )
+        
+        # Refresh se necessario
+        if credentials.expired:
+            credentials.refresh(Request())
+            # Aggiorna i token in session state
+            st.session_state.access_token = credentials.token
+            st.session_state.refresh_token = credentials.refresh_token
+        
+        return credentials
+        
+    except Exception as e:
+        st.error(f"Errore nel refresh delle credenziali: {e}")
+        # Forza re-login
+        st.session_state.authenticated = False
+        st.rerun()
+        return None
+
+def get_gsc_sites():
+    """Recupera i siti disponibili da Google Search Console"""
+    if not st.session_state.get('authenticated', False):
+        return []
+    
+    try:
+        # Ottieni credenziali aggiornate
+        credentials = refresh_credentials()
+        if not credentials:
+            return []
         
         service = build('searchconsole', 'v1', credentials=credentials)
         sites_response = service.sites().list().execute()
@@ -164,7 +191,14 @@ def get_gsc_sites():
         return [{'url': site['siteUrl'], 'permission': site['permissionLevel']} for site in sites]
         
     except Exception as e:
-        st.error(f"Errore nel recupero dei siti GSC: {e}")
+        error_msg = str(e)
+        if 'invalid_grant' in error_msg or 'Bad Request' in error_msg:
+            st.error("🔑 Sessione scaduta. Per favore, effettua nuovamente il login.")
+            st.session_state.authenticated = False
+            if st.button("🔄 Ricarica Pagina", key="reload_after_token_error"):
+                st.rerun()
+        else:
+            st.error(f"Errore nel recupero dei siti GSC: {e}")
         return []
 
 # --- Inizializzazione Session State ---
