@@ -546,14 +546,14 @@ else:
         # Domande preimpostate per GSC
         st.write("Oppure prova una di queste domande rapide:")
         preset_questions_data = [
-            ("Top Query", "Quali sono le 10 query con più clic?"),
-            ("Performance Totale", "Qual è la performance totale (clic, impressioni, CTR, posizione media)?"),
-            ("Query CTR Alto", "Quali query hanno il CTR più alto (con almeno 100 impressioni)?"),
-            ("Query Pos. Bassa", "Quali query hanno posizione media sopra 10 ma con molte impressioni?"),
-            ("Pagine Top", "Quali sono le 10 pagine con più impressioni?"),
-            ("Device Analysis", "Come si distribuiscono i clic per dispositivo?"),
-            ("Paesi Top", "Da quali paesi arrivano più clic?"),
-            ("Search Appearance", "Come si distribuiscono i clic per tipo di risultato?")
+            ("(Dim. Query) Top 10 Query", "Quali sono le 10 query con più clic?"),
+            ("(Dim. Query | Page) Performance Totale", "Qual è la performance (clic, impressioni, CTR, posizione media) per elemento principale della dimensione?"),
+            ("(Dim. Query) Query CTR Alto", "Quali query hanno il CTR più alto (con almeno 100 impressioni)?"),
+            ("(Dim. Query) Query Pos. Bassa", "Quali query hanno posizione media sopra 10 ma con più impressioni?"),
+            ("(Dim. Page) Pagine Top", "Quali sono le 10 pagine con più impressioni?"),
+            ("(Dim. Device) Device Analysis", "Come si distribuiscono i clic per dispositivo?"),
+            ("(Dim. Country)Paesi Top", "Da quali paesi arrivano più clic?"),
+            ("(Dim. S) Search Appearance", "Come si distribuiscono i clic per tipo di risultato?")
         ]
 
         cols = st.columns(4)
