@@ -4,6 +4,7 @@ import time
 import atexit
 from supabase import create_client, Client
 from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 
 # Import delle modalità
@@ -65,12 +66,34 @@ def handle_oauth_callback():
                 "auth_code": auth_code
             })
             
-            if response.session:
+            if response.session and response.session.access_token:
+                # Salva dati di sessione
                 st.session_state.authenticated = True
                 st.session_state.user_email = response.session.user.email if response.session.user else "Unknown"
                 st.session_state.access_token = response.session.access_token
                 st.session_state.refresh_token = response.session.refresh_token
                 
+                # Test immediato delle credenziali
+                try:
+                    credentials = Credentials(
+                        token=st.session_state.access_token,
+                        refresh_token=st.session_state.refresh_token,
+                        token_uri="https://oauth2.googleapis.com/token",
+                        client_id=st.secrets.get("google_oauth_client_id"),
+                        client_secret=st.secrets.get("google_oauth_client_secret"),
+                        scopes=['https://www.googleapis.com/auth/webmasters.readonly']
+                    )
+                    
+                    # Test con una chiamata API semplice
+                    service = build('searchconsole', 'v1', credentials=credentials)
+                    
+                    st.session_state.credentials_verified = True
+                    
+                except Exception as cred_error:
+                    st.warning(f"Attenzione: Credenziali salvate ma verifica fallita: {cred_error}")
+                    st.session_state.credentials_verified = False
+                
+                # Pulisci URL e stato
                 st.query_params.clear()
                 if hasattr(st.session_state, 'auth_url'):
                     del st.session_state.auth_url
@@ -79,12 +102,16 @@ def handle_oauth_callback():
                 time.sleep(1)
                 st.rerun()
             else:
-                st.error("❌ Errore durante il completamento del login")
+                st.error("❌ Errore durante il completamento del login: Sessione non valida")
                 st.query_params.clear()
                 
         except Exception as e:
             st.error(f"❌ Errore nel callback OAuth: {e}")
+            # In caso di errore, pulisci tutto
             st.query_params.clear()
+            st.session_state.authenticated = False
+            if hasattr(st.session_state, 'auth_url'):
+                del st.session_state.auth_url
     
     elif 'error' in query_params:
         error_description = query_params.get('error_description', 'Errore sconosciuto')
@@ -102,7 +129,7 @@ def handle_oauth_login():
             "provider": "google",
             "options": {
                 "redirect_to": redirect_url,
-                "scopes": "https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/cloud-platform.read-only",
+                "scopes": "openid email profile https://www.googleapis.com/auth/webmasters.readonly https://www.googleapis.com/auth/cloud-platform.read-only",
                 "query_params": {
                     "access_type": "offline",
                     "prompt": "consent"
@@ -117,14 +144,23 @@ def handle_oauth_login():
 
 def check_authentication():
     """Verifica se l'utente è autenticato"""
-    session = supabase.auth.get_session()
-    
-    if session and session.access_token:
-        st.session_state.authenticated = True
-        st.session_state.user_email = session.user.email if session.user else "Unknown"
-        st.session_state.access_token = session.access_token
-        st.session_state.refresh_token = session.refresh_token
+    # Prima controlla se abbiamo dati di sessione locali
+    if st.session_state.get('authenticated', False) and st.session_state.get('access_token'):
         return True
+    
+    # Poi controlla la sessione Supabase
+    try:
+        session = supabase.auth.get_session()
+        
+        if session and session.access_token:
+            st.session_state.authenticated = True
+            st.session_state.user_email = session.user.email if session.user else "Unknown"
+            st.session_state.access_token = session.access_token
+            st.session_state.refresh_token = session.refresh_token
+            return True
+    except Exception as e:
+        # Se c'è un errore nel recupero della sessione, considera non autenticato
+        st.session_state.authenticated = False
     
     return False
 
@@ -207,6 +243,9 @@ def init_session_state():
     defaults = {
         'authenticated': False,
         'user_email': "",
+        'access_token': None,
+        'refresh_token': None,
+        'credentials_verified': False,
         'gsc_sites_data': [],
         'selected_site': "",
         'selected_project_id': "",
@@ -335,6 +374,17 @@ def main():
             
             if st.button("🚪 Logout", key="logout_button"):
                 logout()
+            
+            # Test credenziali per debug
+            if st.button("🔍 Testa Credenziali GSC", key="test_credentials"):
+                with st.spinner("Testando credenziali..."):
+                    test_sites = get_gsc_sites()
+                    if test_sites:
+                        st.success(f"✅ Credenziali OK! Trovati {len(test_sites)} siti.")
+                        st.session_state.credentials_verified = True
+                    else:
+                        st.error("❌ Problema con le credenziali.")
+                        st.session_state.credentials_verified = False
             
             st.markdown("---")
             
