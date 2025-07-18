@@ -2,6 +2,8 @@ import streamlit as st
 import os
 import time
 import atexit
+import requests
+from urllib.parse import urlencode
 from supabase import create_client, Client
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
@@ -53,6 +55,83 @@ def init_supabase():
 supabase: Client = init_supabase()
 
 # --- Gestione Autenticazione OAuth ---
+def exchange_direct_oauth_code(auth_code):
+    """Scambia il codice OAuth direttamente con Google per ottenere i token"""
+    try:
+        token_url = "https://oauth2.googleapis.com/token"
+        
+        data = {
+            'client_id': st.secrets.get("google_oauth_client_id"),
+            'client_secret': st.secrets.get("google_oauth_client_secret"),
+            'code': auth_code,
+            'grant_type': 'authorization_code',
+            'redirect_uri': 'https://chatgsc.streamlit.app'
+        }
+        
+        response = requests.post(token_url, data=data)
+        
+        if response.status_code == 200:
+            tokens = response.json()
+            
+            # Salva i token Google
+            st.session_state.access_token = tokens.get('access_token')
+            st.session_state.refresh_token = tokens.get('refresh_token')
+            st.session_state.authenticated = True
+            
+            # Test credenziali
+            if test_google_credentials():
+                st.success("✅ OAuth diretto completato! Credenziali Google funzionanti.")
+                st.session_state.credentials_verified = True
+                st.rerun()
+            else:
+                st.error("❌ Token ottenuti ma test GSC fallito")
+        else:
+            st.error(f"❌ Errore nello scambio del codice: {response.status_code} - {response.text}")
+            
+    except Exception as e:
+        st.error(f"❌ Errore nello scambio OAuth diretto: {e}")
+
+def get_google_provider_token():
+    """Ottiene il token Google direttamente dal provider Supabase"""
+    try:
+        # Ottieni la sessione corrente
+        session = supabase.auth.get_session()
+        if not session:
+            return None, None
+            
+        # Usa l'API Supabase per ottenere i provider tokens
+        headers = {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': f'Bearer {session.access_token}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Endpoint per ottenere i provider tokens (non sempre disponibile pubblicamente)
+        response = requests.get(
+            f"{SUPABASE_URL}/auth/v1/user",
+            headers=headers
+        )
+        
+        if response.status_code == 200:
+            user_data = response.json()
+            
+            # Cerca nelle identities il provider Google
+            identities = user_data.get('identities', [])
+            for identity in identities:
+                if identity.get('provider') == 'google':
+                    # Cerca i token nel metadata o nell'identity
+                    provider_token = identity.get('access_token')
+                    provider_refresh_token = identity.get('refresh_token')
+                    
+                    if provider_token:
+                        return provider_token, provider_refresh_token
+        
+        return None, None
+        
+    except Exception as e:
+        st.error(f"Errore nell'ottenere i token Google: {e}")
+        return None, None
+
 def handle_oauth_callback():
     """Gestisce il callback OAuth e completa l'autenticazione"""
     query_params = st.query_params
@@ -67,57 +146,26 @@ def handle_oauth_callback():
             })
             
             if response.session and response.session.access_token:
-                # Salva dati di sessione
+                # Salva dati di sessione base
                 st.session_state.authenticated = True
                 st.session_state.user_email = response.session.user.email if response.session.user else "Unknown"
+                st.session_state.supabase_token = response.session.access_token
                 
-                # Ottieni provider token da Supabase
-                try:
-                    # Cerca il provider token Google nelle identities
-                    google_identity = None
-                    if response.session.user and response.session.user.identities:
-                        for identity in response.session.user.identities:
-                            if identity.provider == 'google':
-                                google_identity = identity
-                                break
-                    
-                    if google_identity and hasattr(google_identity, 'access_token'):
-                        # Usa il token Google direttamente
-                        st.session_state.access_token = google_identity.access_token
-                        st.session_state.refresh_token = google_identity.refresh_token if hasattr(google_identity, 'refresh_token') else None
-                    else:
-                        # Fallback: usa il token Supabase (potrebbe non funzionare per Google APIs)
-                        st.session_state.access_token = response.session.access_token
-                        st.session_state.refresh_token = response.session.refresh_token
-                        st.warning("⚠️ Usando token Supabase - potrebbe essere necessario riconfigurare l'OAuth")
+                # Prova a ottenere i token Google specifici
+                google_token, google_refresh = get_google_provider_token()
                 
-                except Exception as token_error:
-                    st.error(f"Errore nell'estrazione dei token Google: {token_error}")
-                    # Usa i token Supabase come fallback
+                if google_token:
+                    st.session_state.access_token = google_token
+                    st.session_state.refresh_token = google_refresh
+                    st.success("✅ Token Google ottenuti correttamente!")
+                else:
+                    # Fallback ai token Supabase
                     st.session_state.access_token = response.session.access_token
                     st.session_state.refresh_token = response.session.refresh_token
+                    st.warning("⚠️ Usando token Supabase come fallback")
                 
                 # Test credenziali
-                test_success = False
-                try:
-                    credentials = Credentials(
-                        token=st.session_state.access_token,
-                        refresh_token=st.session_state.refresh_token,
-                        token_uri="https://oauth2.googleapis.com/token",
-                        client_id=st.secrets.get("google_oauth_client_id"),
-                        client_secret=st.secrets.get("google_oauth_client_secret"),
-                        scopes=['https://www.googleapis.com/auth/webmasters.readonly']
-                    )
-                    
-                    # Test rapido
-                    service = build('searchconsole', 'v1', credentials=credentials)
-                    test_response = service.sites().list().execute()
-                    test_success = True
-                    st.session_state.credentials_verified = True
-                    
-                except Exception as cred_error:
-                    st.session_state.credentials_verified = False
-                    st.error(f"❌ Test credenziali fallito: {cred_error}")
+                test_success = test_google_credentials()
                 
                 # Pulisci URL e stato
                 st.query_params.clear()
@@ -125,9 +173,11 @@ def handle_oauth_callback():
                     del st.session_state.auth_url
                 
                 if test_success:
-                    st.success("✅ Login e verifica credenziali completati!")
+                    st.success("✅ Login e verifica credenziali Google completati!")
+                    st.session_state.credentials_verified = True
                 else:
-                    st.warning("⚠️ Login completato ma credenziali Google non verificate")
+                    st.warning("⚠️ Login completato ma credenziali Google non funzionano")
+                    st.session_state.credentials_verified = False
                 
                 time.sleep(1)
                 st.rerun()
@@ -149,6 +199,26 @@ def handle_oauth_callback():
         st.query_params.clear()
         if hasattr(st.session_state, 'auth_url'):
             del st.session_state.auth_url
+
+def test_google_credentials():
+    """Testa se le credenziali Google funzionano"""
+    try:
+        credentials = Credentials(
+            token=st.session_state.access_token,
+            refresh_token=st.session_state.refresh_token,
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=st.secrets.get("google_oauth_client_id"),
+            client_secret=st.secrets.get("google_oauth_client_secret"),
+            scopes=['https://www.googleapis.com/auth/webmasters.readonly']
+        )
+        
+        service = build('searchconsole', 'v1', credentials=credentials)
+        test_response = service.sites().list().execute()
+        return True
+        
+    except Exception as e:
+        st.error(f"Test credenziali Google fallito: {e}")
+        return False
 
 def handle_oauth_login():
     """Gestisce il login OAuth con Google tramite Supabase"""
@@ -421,24 +491,27 @@ def main():
                 st.markdown("""
                 **Se vedi "Sessione scaduta" o "invalid_grant":**
                 
-                1. **Verifica Supabase Dashboard:**
-                   - Authentication → Providers → Google
-                   - Assicurati che "Enable Google provider" sia ON
-                   - Copia il "Callback URL" mostrato
+                Il problema può essere dovuto a:
                 
-                2. **Verifica Google Cloud Console:**
-                   - API & Services → Credentials
-                   - Il tuo OAuth 2.0 Client deve avere:
-                   - Authorized redirect URIs con l'URL di Supabase
-                   - Google Search Console API abilitata
+                **1. Configurazione Supabase → Google:**
+                - Authentication → Providers → Google
+                - Assicurati che "Enable Google provider" sia ON
+                - Verifica Client ID e Client Secret corretti
+                - Copia il "Callback URL" e aggiungilo in Google Cloud Console
                 
-                3. **Scope Richiesti in Supabase:**
-                   - `openid email profile`
-                   - `https://www.googleapis.com/auth/webmasters.readonly`
+                **2. Google Cloud Console:**
+                - API & Services → Credentials
+                - OAuth 2.0 Client deve avere Supabase callback URL
+                - Google Search Console API deve essere abilitata
                 
-                4. **Se persiste il problema:**
-                   - Clicca "Forza Re-autenticazione" sopra
-                   - Controlla che l'account Google abbia accesso a GSC
+                **3. Provider Token Access:**
+                - Supabase potrebbe non esporre i token Google
+                - In questo caso, usa "OAuth Diretto Google" sopra
+                
+                **4. Scope OAuth in Supabase:**
+                ```
+                openid email profile https://www.googleapis.com/auth/webmasters.readonly
+                ```
                 """)
             
             
@@ -461,6 +534,14 @@ def main():
                     st.write("**Debug Info:**")
                     st.write(f"- Access token presente: {bool(st.session_state.get('access_token'))}")
                     st.write(f"- Refresh token presente: {bool(st.session_state.get('refresh_token'))}")
+                    st.write(f"- Token Supabase presente: {bool(st.session_state.get('supabase_token'))}")
+                    
+                    # Prova a ottenere token Google fresh
+                    google_token, google_refresh = get_google_provider_token()
+                    if google_token:
+                        st.session_state.access_token = google_token
+                        st.session_state.refresh_token = google_refresh
+                        st.success("🔄 Token Google aggiornati!")
                     
                     test_sites = get_gsc_sites()
                     if test_sites:
@@ -469,6 +550,36 @@ def main():
                     else:
                         st.error("❌ Problema con le credenziali.")
                         st.session_state.credentials_verified = False
+            
+            # Pulsante per approccio OAuth diretto
+            if st.button("🌐 Prova OAuth Diretto Google", key="direct_oauth"):
+                st.info("🔧 **OAuth Diretto**: Questa opzione bypassa Supabase e usa OAuth Google diretto")
+                
+                # Genera URL OAuth diretto
+                google_oauth_url = "https://accounts.google.com/o/oauth2/v2/auth"
+                params = {
+                    'client_id': st.secrets.get("google_oauth_client_id"),
+                    'redirect_uri': 'https://chatgsc.streamlit.app',
+                    'scope': 'openid email profile https://www.googleapis.com/auth/webmasters.readonly',
+                    'response_type': 'code',
+                    'access_type': 'offline',
+                    'prompt': 'consent'
+                }
+                
+                direct_oauth_url = f"{google_oauth_url}?{urlencode(params)}"
+                
+                st.markdown("**Istruzioni:**")
+                st.markdown("1. Clicca il link sotto")
+                st.markdown("2. Autorizza l'accesso a Google Search Console")
+                st.markdown("3. Copia il 'code' dall'URL di ritorno")
+                st.markdown("4. Incollalo nel campo qui sotto")
+                
+                st.link_button("🚀 Vai a Google OAuth", direct_oauth_url)
+                
+                auth_code_input = st.text_input("Incolla il codice di autorizzazione qui:", key="manual_auth_code")
+                
+                if st.button("🔑 Scambia Codice con Token", key="exchange_code") and auth_code_input:
+                    exchange_direct_oauth_code(auth_code_input)
             
             # Pulsante per re-autenticazione forzata
             if st.button("🔄 Forza Re-autenticazione", key="force_reauth"):
