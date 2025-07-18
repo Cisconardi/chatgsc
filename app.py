@@ -20,8 +20,8 @@ st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Go
 
 # --- Configurazione Supabase ---
 # Queste dovranno essere configurate con i tuoi valori reali
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://yitqdfdkeljllaplfgar.supabase.co")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "your-anon-key")
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
 
 # Inizializza client Supabase
 @st.cache_resource
