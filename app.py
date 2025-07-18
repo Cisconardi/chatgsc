@@ -83,7 +83,7 @@ def exchange_direct_oauth_code(auth_code):
             
             # Test credenziali
             if test_google_credentials():
-                st.success("✅ OAuth diretto completato! Credenziali Google funzionanti.")
+                st.success("✅ OAuth GSC completato! Credenziali Google funzionanti.")
                 st.session_state.credentials_verified = True
                 st.rerun()
             else:
@@ -92,10 +92,10 @@ def exchange_direct_oauth_code(auth_code):
             st.error(f"❌ Errore nello scambio del codice: {response.status_code} - {response.text}")
             
     except Exception as e:
-        st.error(f"❌ Errore nello scambio OAuth diretto: {e}")
+        st.error(f"❌ Errore nello scambio OAuth GSC: {e}")
 
 def handle_google_oauth_callback():
-    """Gestisce il callback OAuth diretto di Google"""
+    """Gestisce il callback OAuth GSC di Google"""
     query_params = get_query_params()
 
     if 'code' in query_params:
@@ -134,7 +134,7 @@ def test_google_credentials():
         return False
 
 def handle_google_oauth_login():
-    """Genera l'URL di login OAuth diretto con Google"""
+    """Genera l'URL di login OAuth GSC con Google"""
     try:
         google_oauth_url = "https://accounts.google.com/o/oauth2/v2/auth"
         params = {
@@ -264,7 +264,7 @@ def init_session_state():
         'selected_project_id': "",
         'config_applied_successfully': False,
         'table_schema_for_prompt': "",
-        'analysis_mode': "🔍 Google Search Console Diretto",
+        'analysis_mode': "🔍 Google Search Console",
         'gsc_config': None,
         'gsc_data': None,
         'enable_chart_generation': False
@@ -437,9 +437,9 @@ def main():
 
     else:
         # Utente autenticato - mostra la modalità appropriata
-        current_mode = st.session_state.get('analysis_mode', '🔍 Google Search Console Diretto')
+        current_mode = st.session_state.get('analysis_mode', '🔍 Google Search Console')
         
-        if current_mode == "🔍 Google Search Console Diretto":
+        if current_mode == "🔍 Google Search Console":
             # Carica modalità GSC Diretta
             gsc_mode = GSCDirectMode(st.session_state, get_gsc_sites)
             gsc_mode.render()
