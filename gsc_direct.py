@@ -3,8 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+import openai
 
 class GSCDirectMode:
     """Classe per gestire la modalità Google Search Console Diretta"""
@@ -12,8 +11,10 @@ class GSCDirectMode:
     def __init__(self, session_state, get_gsc_sites_func):
         self.session_state = session_state
         self.get_gsc_sites = get_gsc_sites_func
-        self.TARGET_GEMINI_MODEL = "gemini-2.0-flash-001"
-        self.CHART_GENERATION_MODEL = "gemini-2.0-flash-001"
+        self.OPENAI_MODEL = "o4-mini"
+        self.openai_api_key = st.secrets.get("openai_api_key", None)
+        if self.openai_api_key:
+            openai.api_key = self.openai_api_key
     
     def refresh_credentials(self):
         """Aggiorna i token OAuth se necessario"""
@@ -114,13 +115,11 @@ class GSCDirectMode:
         if df.empty:
             return "Non ci sono dati da analizzare."
         
-        # Se non abbiamo un progetto GCP configurato, restituiamo un'analisi di base
-        if not project_id:
+        # Se la chiave OpenAI non è disponibile, restituiamo un'analisi di base
+        if not self.openai_api_key:
             return self._generate_basic_analysis(question, df)
-        
+
         try:
-            vertexai.init(project=project_id, location="europe-west1") 
-            model = GenerativeModel(self.TARGET_GEMINI_MODEL)
             
             # Prepara informazioni sul DataFrame
             df_info = {
@@ -145,13 +144,17 @@ class GSCDirectMode:
             ]
             
             full_prompt = "\n".join(prompt_parts)
-            generation_config = GenerationConfig(temperature=0.3, max_output_tokens=1024)
-            response = model.generate_content(full_prompt, generation_config=generation_config)
-            
-            if not response.candidates or not response.candidates[0].content.parts:
+            response = openai.ChatCompletion.create(
+                model=self.OPENAI_MODEL,
+                messages=[{"role": "user", "content": full_prompt}],
+                temperature=0.3,
+                max_tokens=1024,
+            )
+
+            answer = response["choices"][0]["message"]["content"].strip()
+            if not answer:
                 return self._generate_basic_analysis(question, df)
-            
-            return response.candidates[0].content.parts[0].text.strip()
+            return answer
         except Exception as e:
             st.warning(f"Errore nell'analisi AI avanzata: {e}. Uso analisi di base.")
             return self._generate_basic_analysis(question, df)
@@ -200,13 +203,11 @@ class GSCDirectMode:
             st.info("🤖💬 Nessun dato disponibile per generare un grafico.")
             return None
         
-        # Se non abbiamo Vertex AI, generiamo codice di base
-        if not project_id:
+        # Se la chiave OpenAI non è disponibile, generiamo codice di base
+        if not self.openai_api_key:
             return self._generate_basic_chart_code(df)
-        
+
         try:
-            vertexai.init(project=project_id, location="europe-west1")
-            model = GenerativeModel(self.CHART_GENERATION_MODEL)
 
             if len(df) > 10:
                 data_sample = df.sample(min(10, len(df))).to_string(index=False)
@@ -241,18 +242,22 @@ Il codice deve:
 
 Restituisci SOLO il codice Python.
 """
-            response = model.generate_content(chart_prompt)
-            
-            if response.candidates and response.candidates[0].content.parts:
-                code_content = response.candidates[0].content.parts[0].text.strip()
-                if code_content.startswith("```python"):
-                    code_content = code_content[len("```python"):].strip()
-                if code_content.endswith("```"):
-                    code_content = code_content[:-len("```")].strip()
-                
-                return code_content
-            else:
+            response = openai.ChatCompletion.create(
+                model=self.OPENAI_MODEL,
+                messages=[{"role": "user", "content": chart_prompt}],
+                temperature=0.2,
+                max_tokens=512,
+            )
+
+            code_content = response["choices"][0]["message"]["content"].strip()
+            if not code_content:
                 return self._generate_basic_chart_code(df)
+            if code_content.startswith("```python"):
+                code_content = code_content[len("```python"):].strip()
+            if code_content.endswith("```"):
+                code_content = code_content[:-len("```")].strip()
+
+            return code_content
         except Exception as e:
             st.warning(f"Errore nella generazione avanzata del grafico: {e}. Uso grafico di base.")
             return self._generate_basic_chart_code(df)
