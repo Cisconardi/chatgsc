@@ -154,7 +154,7 @@ class GSCDirectMode:
             response = self.openai_client.chat.completions.create(
                 model=self.OPENAI_MODEL,
                 messages=[{"role": "user", "content": full_prompt}],
-                temperature=0.3,
+                temperature=1,
                 # Some providers expect the parameter name 'max_completion_tokens'
                 # instead of 'max_tokens'. Using the more compatible parameter
                 # avoids API errors like:
