@@ -357,7 +357,7 @@ Restituisci SOLO il codice Python.
             else:
                 st.error("❌ Compila tutti i campi richiesti")
         
-        if self.session_state.get('config_applied_successfully', False) and self.session_state.get('analysis_mode') == "📊 BigQuery (Avanzato)":
+        if self.session_state.get('config_applied_successfully', False) and self.session_state.get('analysis_mode') == "📊 BigQuery":
             st.success("🟢 Configurazione BigQuery attiva")
             
             # Mostra schema in expander per debug
