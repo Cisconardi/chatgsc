@@ -20,6 +20,76 @@ class GSCDirectMode:
         else:
             self.openai_client = None
 
+    def _get_fixed_range(self, option: str) -> tuple[pd.Timestamp, pd.Timestamp]:
+        """Restituisce la coppia (start, end) per un intervallo predefinito."""
+        end = pd.Timestamp.now().normalize() - pd.Timedelta(days=1)
+        if option == "Ultimi 28 giorni":
+            start = end - pd.Timedelta(days=27)
+        elif option == "Ultimi 3 mesi":
+            start = end - pd.DateOffset(months=3) + pd.Timedelta(days=1)
+        elif option == "Ultimi 6 mesi":
+            start = end - pd.DateOffset(months=6) + pd.Timedelta(days=1)
+        elif option == "Ultimi 12 mesi":
+            start = end - pd.DateOffset(months=12) + pd.Timedelta(days=1)
+        elif option == "Ultimi 16 mesi":
+            start = end - pd.DateOffset(months=16) + pd.Timedelta(days=1)
+        else:  # personalizzato
+            start = end - pd.Timedelta(days=30)
+        return start, end
+
+    def _get_compare_ranges(self, option: str) -> tuple[tuple[str, str], tuple[str, str]]:
+        """Determina le date per la modalità confronto."""
+        end = pd.Timestamp.now().normalize() - pd.Timedelta(days=1)
+        if option == "MoM 28gg":
+            start = end - pd.Timedelta(days=27)
+            prev_end = start - pd.Timedelta(days=1)
+            prev_start = prev_end - pd.Timedelta(days=27)
+        elif option == "MoM 3 mesi":
+            start = end - pd.DateOffset(months=3) + pd.Timedelta(days=1)
+            prev_end = start - pd.Timedelta(days=1)
+            prev_start = prev_end - pd.DateOffset(months=3) + pd.Timedelta(days=1)
+        elif option == "MoM 6 mesi":
+            start = end - pd.DateOffset(months=6) + pd.Timedelta(days=1)
+            prev_end = start - pd.Timedelta(days=1)
+            prev_start = prev_end - pd.DateOffset(months=6) + pd.Timedelta(days=1)
+        elif option == "YoY 28gg":
+            start = end - pd.Timedelta(days=27)
+            prev_start = start - pd.DateOffset(years=1)
+            prev_end = end - pd.DateOffset(years=1)
+        elif option == "YoY 3 mesi":
+            start = end - pd.DateOffset(months=3) + pd.Timedelta(days=1)
+            prev_start = start - pd.DateOffset(years=1)
+            prev_end = end - pd.DateOffset(years=1)
+        elif option == "YoY 6 mesi":
+            start = end - pd.DateOffset(months=6) + pd.Timedelta(days=1)
+            prev_start = start - pd.DateOffset(years=1)
+            prev_end = end - pd.DateOffset(years=1)
+        else:
+            start = end - pd.Timedelta(days=27)
+            prev_end = start - pd.Timedelta(days=27)
+            prev_start = prev_end - pd.Timedelta(days=27)
+        return ((start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')),
+                (prev_start.strftime('%Y-%m-%d'), prev_end.strftime('%Y-%m-%d')))
+
+    def fetch_comparison_data(
+        self,
+        site_url: str,
+        start: str,
+        end: str,
+        prev_start: str,
+        prev_end: str,
+        dimensions: list[str],
+        row_limit: int
+    ) -> pd.DataFrame | None:
+        """Recupera due periodi e li combina con una colonna 'period'."""
+        df_current = self.fetch_gsc_data(site_url, start, end, dimensions, row_limit)
+        df_prev = self.fetch_gsc_data(site_url, prev_start, prev_end, dimensions, row_limit)
+        if df_current is None or df_prev is None:
+            return None
+        df_current['period'] = 'current'
+        df_prev['period'] = 'previous'
+        return pd.concat([df_current, df_prev], ignore_index=True)
+
     
     def refresh_credentials(self):
         """Aggiorna i token OAuth se necessario"""
@@ -355,19 +425,35 @@ else:
                 self.session_state.selected_site = selected_site_url
                 
                 # Configurazione periodo dati
-                col1, col2 = st.columns(2)
-                with col1:
-                    start_date = st.date_input(
-                        "📅 Data Inizio",
-                        value=pd.Timestamp.now() - pd.Timedelta(days=30),
-                        key="gsc_start_date"
-                    )
-                with col2:
-                    end_date = st.date_input(
-                        "📅 Data Fine", 
-                        value=pd.Timestamp.now() - pd.Timedelta(days=1),
-                        key="gsc_end_date"
-                    )
+                date_option = st.selectbox(
+                    "⏱️ Intervallo Date",
+                    [
+                        "Personalizzato",
+                        "Ultimi 28 giorni",
+                        "Ultimi 3 mesi",
+                        "Ultimi 6 mesi",
+                        "Ultimi 12 mesi",
+                        "Ultimi 16 mesi",
+                    ],
+                    key="gsc_date_option",
+                )
+                if date_option == "Personalizzato":
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        start_date = st.date_input(
+                            "📅 Data Inizio",
+                            value=pd.Timestamp.now() - pd.Timedelta(days=30),
+                            key="gsc_start_date",
+                        )
+                    with col2:
+                        end_date = st.date_input(
+                            "📅 Data Fine",
+                            value=pd.Timestamp.now() - pd.Timedelta(days=1),
+                            key="gsc_end_date",
+                        )
+                else:
+                    start_date, end_date = self._get_fixed_range(date_option)
+                    st.info(f"Intervallo selezionato: {date_option}")
                 
                 # Dimensioni da includere
                 dimensions = st.multiselect(
@@ -385,13 +471,38 @@ else:
                     step=100,
                     key="gsc_row_limit"
                 )
+
+                compare_mode = st.checkbox("🔄 Modalità Confronto", key="gsc_compare_mode")
+                if compare_mode:
+                    compare_type = st.selectbox(
+                        "Tipo di confronto",
+                        [
+                            "MoM 28gg",
+                            "MoM 3 mesi",
+                            "MoM 6 mesi",
+                            "YoY 28gg",
+                            "YoY 3 mesi",
+                            "YoY 6 mesi",
+                        ],
+                        key="gsc_compare_type",
+                    )
+                    (curr_range, prev_range) = self._get_compare_ranges(compare_type)
+                    start_date, end_date = pd.to_datetime(curr_range[0]), pd.to_datetime(curr_range[1])
+                    compare_start, compare_end = prev_range
+                else:
+                    compare_type = None
+                    compare_start = compare_end = None
                 
                 self.session_state.gsc_config = {
                     'site_url': selected_site_url,
                     'start_date': start_date.strftime('%Y-%m-%d'),
                     'end_date': end_date.strftime('%Y-%m-%d'),
                     'dimensions': dimensions,
-                    'row_limit': row_limit
+                    'row_limit': row_limit,
+                    'compare_mode': compare_mode,
+                    'compare_type': compare_type,
+                    'compare_start': compare_start,
+                    'compare_end': compare_end,
                 }
                 
                 self.session_state.config_applied_successfully = True
@@ -462,20 +573,39 @@ else:
             
             # Fetch dati da GSC
             with st.spinner(f"🤖💬 Recuperando dati da Google Search Console per: \"{user_question_input}\""):
-                gsc_data = self.fetch_gsc_data(
-                    config['site_url'],
-                    config['start_date'],
-                    config['end_date'],
-                    config['dimensions'],
-                    config['row_limit']
-                )
+                if config.get('compare_mode'):
+                    gsc_data = self.fetch_comparison_data(
+                        config['site_url'],
+                        config['start_date'],
+                        config['end_date'],
+                        config['compare_start'],
+                        config['compare_end'],
+                        config['dimensions'],
+                        config['row_limit']
+                    )
+                else:
+                    gsc_data = self.fetch_gsc_data(
+                        config['site_url'],
+                        config['start_date'],
+                        config['end_date'],
+                        config['dimensions'],
+                        config['row_limit']
+                    )
                 self.session_state.gsc_data = gsc_data
 
             if gsc_data is not None and not gsc_data.empty:
                 with st.expander("🔍 Dati GSC Recuperati", expanded=False):
                     st.subheader("Dataset GSC:")
                     st.write(f"**Sito:** {config['site_url']}")
-                    st.write(f"**Periodo:** {config['start_date']} - {config['end_date']}")
+                    if config.get('compare_mode'):
+                        st.write(
+                            f"**Periodo attuale:** {config['start_date']} - {config['end_date']}"
+                        )
+                        st.write(
+                            f"**Periodo confronto:** {config['compare_start']} - {config['compare_end']}"
+                        )
+                    else:
+                        st.write(f"**Periodo:** {config['start_date']} - {config['end_date']}")
                     st.write(f"**Dimensioni:** {', '.join(config['dimensions'])}")
                     st.write(f"**Righe:** {len(gsc_data)}")
                     st.dataframe(gsc_data.head(200))
