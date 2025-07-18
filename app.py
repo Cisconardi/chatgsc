@@ -70,10 +70,35 @@ def handle_oauth_callback():
                 # Salva dati di sessione
                 st.session_state.authenticated = True
                 st.session_state.user_email = response.session.user.email if response.session.user else "Unknown"
-                st.session_state.access_token = response.session.access_token
-                st.session_state.refresh_token = response.session.refresh_token
                 
-                # Test immediato delle credenziali
+                # Ottieni provider token da Supabase
+                try:
+                    # Cerca il provider token Google nelle identities
+                    google_identity = None
+                    if response.session.user and response.session.user.identities:
+                        for identity in response.session.user.identities:
+                            if identity.provider == 'google':
+                                google_identity = identity
+                                break
+                    
+                    if google_identity and hasattr(google_identity, 'access_token'):
+                        # Usa il token Google direttamente
+                        st.session_state.access_token = google_identity.access_token
+                        st.session_state.refresh_token = google_identity.refresh_token if hasattr(google_identity, 'refresh_token') else None
+                    else:
+                        # Fallback: usa il token Supabase (potrebbe non funzionare per Google APIs)
+                        st.session_state.access_token = response.session.access_token
+                        st.session_state.refresh_token = response.session.refresh_token
+                        st.warning("⚠️ Usando token Supabase - potrebbe essere necessario riconfigurare l'OAuth")
+                
+                except Exception as token_error:
+                    st.error(f"Errore nell'estrazione dei token Google: {token_error}")
+                    # Usa i token Supabase come fallback
+                    st.session_state.access_token = response.session.access_token
+                    st.session_state.refresh_token = response.session.refresh_token
+                
+                # Test credenziali
+                test_success = False
                 try:
                     credentials = Credentials(
                         token=st.session_state.access_token,
@@ -84,21 +109,26 @@ def handle_oauth_callback():
                         scopes=['https://www.googleapis.com/auth/webmasters.readonly']
                     )
                     
-                    # Test con una chiamata API semplice
+                    # Test rapido
                     service = build('searchconsole', 'v1', credentials=credentials)
-                    
+                    test_response = service.sites().list().execute()
+                    test_success = True
                     st.session_state.credentials_verified = True
                     
                 except Exception as cred_error:
-                    st.warning(f"Attenzione: Credenziali salvate ma verifica fallita: {cred_error}")
                     st.session_state.credentials_verified = False
+                    st.error(f"❌ Test credenziali fallito: {cred_error}")
                 
                 # Pulisci URL e stato
                 st.query_params.clear()
                 if hasattr(st.session_state, 'auth_url'):
                     del st.session_state.auth_url
                 
-                st.success("✅ Login completato con successo!")
+                if test_success:
+                    st.success("✅ Login e verifica credenziali completati!")
+                else:
+                    st.warning("⚠️ Login completato ma credenziali Google non verificate")
+                
                 time.sleep(1)
                 st.rerun()
             else:
@@ -215,26 +245,49 @@ def get_gsc_sites():
         return []
     
     try:
+        # Diagnostica dettagliata
+        if not st.session_state.get('access_token'):
+            st.error("❌ Access token mancante")
+            return []
+        
         # Ottieni credenziali aggiornate
         credentials = refresh_credentials()
         if not credentials:
             return []
         
+        # Debug delle credenziali
+        st.info(f"🔍 Debug: Token valido: {credentials.valid}, Scaduto: {credentials.expired}")
+        
         service = build('searchconsole', 'v1', credentials=credentials)
         sites_response = service.sites().list().execute()
         sites = sites_response.get('siteEntry', [])
+        
+        st.success(f"✅ API GSC risposta OK: {len(sites)} siti trovati")
         
         return [{'url': site['siteUrl'], 'permission': site['permissionLevel']} for site in sites]
         
     except Exception as e:
         error_msg = str(e)
+        st.error(f"❌ Errore dettagliato: {error_msg}")
+        
         if 'invalid_grant' in error_msg or 'Bad Request' in error_msg:
-            st.error("🔑 Sessione scaduta. Per favore, effettua nuovamente il login.")
+            st.error("🔑 **Diagnosi**: Token Google non validi o scaduti")
+            st.info("**Soluzioni possibili:**")
+            st.info("1. Clicca 'Forza Re-autenticazione' nella sidebar")
+            st.info("2. Verifica configurazione OAuth in Supabase")
+            st.info("3. Controlla che l'app abbia i permessi GSC")
+            
             st.session_state.authenticated = False
-            if st.button("🔄 Ricarica Pagina", key="reload_after_token_error"):
+            if st.button("🔄 Vai al Login", key="gsc_login_redirect"):
                 st.rerun()
+        elif 'insufficient authentication scopes' in error_msg.lower():
+            st.error("🔐 **Diagnosi**: Scope OAuth insufficienti")
+            st.info("L'app non ha i permessi per accedere a Google Search Console")
+        elif 'quotaExceeded' in error_msg:
+            st.warning("⚠️ **Diagnosi**: Quota API superata, riprova più tardi")
         else:
-            st.error(f"Errore nel recupero dei siti GSC: {e}")
+            st.error("🔧 **Diagnosi**: Errore generico delle API Google")
+            
         return []
 
 # --- Inizializzazione Session State ---
@@ -363,6 +416,32 @@ def main():
             st.write("3. **Configurazione**: Seleziona modalità e parametri")
             st.write("4. **Chat**: Fai domande sui tuoi dati!")
             
+            # Istruzioni per problemi comuni
+            with st.expander("🔧 Risoluzione Problemi", expanded=False):
+                st.markdown("""
+                **Se vedi "Sessione scaduta" o "invalid_grant":**
+                
+                1. **Verifica Supabase Dashboard:**
+                   - Authentication → Providers → Google
+                   - Assicurati che "Enable Google provider" sia ON
+                   - Copia il "Callback URL" mostrato
+                
+                2. **Verifica Google Cloud Console:**
+                   - API & Services → Credentials
+                   - Il tuo OAuth 2.0 Client deve avere:
+                   - Authorized redirect URIs con l'URL di Supabase
+                   - Google Search Console API abilitata
+                
+                3. **Scope Richiesti in Supabase:**
+                   - `openid email profile`
+                   - `https://www.googleapis.com/auth/webmasters.readonly`
+                
+                4. **Se persiste il problema:**
+                   - Clicca "Forza Re-autenticazione" sopra
+                   - Controlla che l'account Google abbia accesso a GSC
+                """)
+            
+            
         else:
             # Utente autenticato
             st.markdown(f"""
@@ -378,6 +457,11 @@ def main():
             # Test credenziali per debug
             if st.button("🔍 Testa Credenziali GSC", key="test_credentials"):
                 with st.spinner("Testando credenziali..."):
+                    # Debug info
+                    st.write("**Debug Info:**")
+                    st.write(f"- Access token presente: {bool(st.session_state.get('access_token'))}")
+                    st.write(f"- Refresh token presente: {bool(st.session_state.get('refresh_token'))}")
+                    
                     test_sites = get_gsc_sites()
                     if test_sites:
                         st.success(f"✅ Credenziali OK! Trovati {len(test_sites)} siti.")
@@ -385,6 +469,19 @@ def main():
                     else:
                         st.error("❌ Problema con le credenziali.")
                         st.session_state.credentials_verified = False
+            
+            # Pulsante per re-autenticazione forzata
+            if st.button("🔄 Forza Re-autenticazione", key="force_reauth"):
+                st.session_state.authenticated = False
+                st.session_state.access_token = None
+                st.session_state.refresh_token = None
+                st.session_state.credentials_verified = False
+                try:
+                    supabase.auth.sign_out()
+                except:
+                    pass
+                st.info("Effettua nuovamente il login per risolvere i problemi di credenziali.")
+                st.rerun()
             
             st.markdown("---")
             
