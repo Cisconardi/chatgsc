@@ -71,6 +71,10 @@ streamlit run app.py
    - Vertex AI API (per modalità avanzata)
 3. Crea OAuth 2.0 Client ID
 4. Aggiungi il redirect URI dell'app (es. `https://your-app-url.streamlit.app`)
+5. Assicurati che l'OAuth richieda i seguenti scope:
+   - `https://www.googleapis.com/auth/webmasters.readonly`
+   - `https://www.googleapis.com/auth/bigquery.readonly`
+   - `https://www.googleapis.com/auth/cloud-platform.read-only`
 
 ## 📊 Modalità di Utilizzo
 
