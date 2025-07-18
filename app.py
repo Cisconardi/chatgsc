@@ -388,7 +388,7 @@ def main():
             
             st.markdown(f"""
             <div class="user-info">
-                <h4>📡 On air!</h4>
+                <p>📡 On air!</p>
             </div>
             """, unsafe_allow_html=True)
             
