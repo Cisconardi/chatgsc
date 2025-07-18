@@ -11,10 +11,12 @@ class GSCDirectMode:
     def __init__(self, session_state, get_gsc_sites_func):
         self.session_state = session_state
         self.get_gsc_sites = get_gsc_sites_func
+
         self.OPENAI_MODEL = "o4-mini"
         self.openai_api_key = st.secrets.get("openai_api_key", None)
         if self.openai_api_key:
             openai.api_key = self.openai_api_key
+
     
     def refresh_credentials(self):
         """Aggiorna i token OAuth se necessario"""
@@ -115,8 +117,10 @@ class GSCDirectMode:
         if df.empty:
             return "Non ci sono dati da analizzare."
         
+
         # Se la chiave OpenAI non è disponibile, restituiamo un'analisi di base
         if not self.openai_api_key:
+
             return self._generate_basic_analysis(question, df)
 
         try:
@@ -155,6 +159,7 @@ class GSCDirectMode:
             if not answer:
                 return self._generate_basic_analysis(question, df)
             return answer
+
         except Exception as e:
             st.warning(f"Errore nell'analisi AI avanzata: {e}. Uso analisi di base.")
             return self._generate_basic_analysis(question, df)
@@ -202,9 +207,10 @@ class GSCDirectMode:
         if df.empty:
             st.info("🤖💬 Nessun dato disponibile per generare un grafico.")
             return None
-        
+
         # Se la chiave OpenAI non è disponibile, generiamo codice di base
         if not self.openai_api_key:
+
             return self._generate_basic_chart_code(df)
 
         try:
@@ -252,6 +258,7 @@ Restituisci SOLO il codice Python.
             code_content = response["choices"][0]["message"]["content"].strip()
             if not code_content:
                 return self._generate_basic_chart_code(df)
+
             if code_content.startswith("```python"):
                 code_content = code_content[len("```python"):].strip()
             if code_content.endswith("```"):
