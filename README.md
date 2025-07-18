@@ -68,7 +68,7 @@ streamlit run app.py
 2. Abilita API:
    - Google Search Console API
    - BigQuery API (per modalità avanzata)
-   - Vertex AI API (per modalità avanzata)
+   - OpenAI API (per modalità avanzata)
 3. Crea OAuth 2.0 Client ID
 4. Aggiungi il redirect URI dell'app (es. `https://your-app-url.streamlit.app`)
 5. Assicurati che l'OAuth richieda i seguenti scope:
@@ -99,7 +99,7 @@ streamlit run app.py
 
 **Requisiti**:
 - 🔧 Export GSC → BigQuery configurato
-- 🔧 Progetto GCP con Vertex AI
+- 🔧 API key OpenAI
 - 🔧 Permessi BigQuery
 
 ## 🛠️ Architettura Tecnica
@@ -159,10 +159,9 @@ User Question → AI → SQL → BigQuery → DataFrame → AI Summary → Respo
 - ✅ Verifica permessi IAM del progetto
 - ✅ Controlla nome progetto nei secrets
 
-**"Vertex AI not available"**
-- ✅ Abilita Vertex AI API
-- ✅ Verifica region supportate
-- ✅ Controlla quota progetto
+**"OpenAI authentication failed"**
+- ✅ Verifica API key OpenAI
+- ✅ Controlla quota e limiti
 
 ### Logs e Debug
 - 🔍 Streamlit Cloud: Manage app → Logs

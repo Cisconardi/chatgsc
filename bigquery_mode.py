@@ -5,8 +5,7 @@ import os
 import tempfile
 import json
 from google.cloud import bigquery
-import vertexai
-from vertexai.generative_models import GenerativeModel, GenerationConfig
+import openai
 from google.oauth2.credentials import Credentials
 
 class BigQueryMode:
@@ -14,8 +13,12 @@ class BigQueryMode:
     
     def __init__(self, session_state):
         self.session_state = session_state
-        self.TARGET_GEMINI_MODEL = "gemini-2.0-flash-001"
-        self.CHART_GENERATION_MODEL = "gemini-2.0-flash-001"
+        self.OPENAI_MODEL = "o4-mini"
+        self.openai_api_key = st.secrets.get("openai_api_key", None)
+        if self.openai_api_key:
+            self.openai_client = openai.OpenAI(api_key=self.openai_api_key)
+        else:
+            self.openai_client = None
     
     def setup_gcp_credentials_from_oauth(self):
         """Configura le credenziali GCP usando il token OAuth"""
@@ -116,8 +119,6 @@ class BigQueryMode:
             return None
 
         try:
-            vertexai.init(project=project_id, location=location) 
-            model = GenerativeModel(model_name)
             prompt_parts = [
                 "Sei un esperto assistente AI che traduce domande in linguaggio naturale in query SQL per Google BigQuery,",
                 "specifiche per i dati di Google Search Console. Le date nelle domande (es. 'ieri', 'la scorsa settimana') devono essere interpretate",
@@ -137,21 +138,27 @@ class BigQueryMode:
                 "SQL:"
             ])
             full_prompt = "\n".join(prompt_parts)
-            
-            generation_config = GenerationConfig(temperature=0.1, max_output_tokens=1024)
-            response = model.generate_content(full_prompt, generation_config=generation_config)
-            
-            if not response.candidates or not response.candidates[0].content.parts:
+            if not self.openai_client:
+                st.error("Chiave OpenAI mancante.")
+                return None
+            response = self.openai_client.chat.completions.create(
+                model=self.OPENAI_MODEL,
+                messages=[{"role": "user", "content": full_prompt}],
+                temperature=0.1,
+                max_completion_tokens=1024,
+            )
+
+            if not response.choices or not response.choices[0].message.content:
                 st.error("🤖💬 Il modello non ha restituito una risposta valida.")
                 return None
-            sql_query = response.candidates[0].content.parts[0].text.strip()
+            sql_query = response.choices[0].message.content.strip()
             if "ERRORE:" in sql_query:
                 st.error(f"🤖💬 Il modello ha indicato un errore: {sql_query}")
                 return None
             sql_query = sql_query.replace("```sql", "").replace("```", "").strip()
             return sql_query
         except Exception as e:
-            st.error(f"🤖💬 Errore durante la chiamata a Vertex AI: {e}") 
+            st.error(f"🤖💬 Errore durante la chiamata a OpenAI: {e}")
             return None
 
     def execute_bigquery_query(self, project_id: str, sql_query: str) -> pd.DataFrame | None:
@@ -182,8 +189,6 @@ class BigQueryMode:
             st.error("🤖💬 Mancano alcuni parametri per la generazione del riassunto.")
             return None
         try:
-            vertexai.init(project=project_id, location=location) 
-            model = GenerativeModel(model_name)
             results_sample_text = results_df.head(20).to_string(index=False)
             if len(results_df) > 20:
                 results_sample_text += f"\n... e altre {len(results_df)-20} righe."
@@ -198,14 +203,21 @@ E i seguenti risultati ottenuti da una query SQL:
 Fornisci un breve riassunto conciso e in linguaggio naturale di questi risultati, rispondendo direttamente alla domanda originale dell'utente.
 Metti in grassetto (usando **testo**) le metriche e i dati più importanti.
 """
-            generation_config = GenerationConfig(temperature=0.5, max_output_tokens=512)
-            response = model.generate_content(prompt, generation_config=generation_config)
-            if not response.candidates or not response.candidates[0].content.parts:
-                 st.warning("Il modello non ha restituito un riassunto valido.")
-                 return "Non è stato possibile generare un riassunto."
-            return response.candidates[0].content.parts[0].text.strip()
+            if not self.openai_client:
+                st.error("Chiave OpenAI mancante.")
+                return None
+            response = self.openai_client.chat.completions.create(
+                model=self.OPENAI_MODEL,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.5,
+                max_completion_tokens=512,
+            )
+            if not response.choices or not response.choices[0].message.content:
+                st.warning("Il modello non ha restituito un riassunto valido.")
+                return "Non è stato possibile generare un riassunto."
+            return response.choices[0].message.content.strip()
         except Exception as e:
-            st.error(f"Errore durante la generazione del riassunto: {e}")
+            st.error(f"Errore durante la generazione del riassunto con OpenAI: {e}")
             return "Errore nella generazione del riassunto."
 
     def generate_chart_code_with_llm(self, project_id: str, location: str, model_name: str, original_question: str, sql_query: str, query_results_df: pd.DataFrame) -> str | None:
@@ -218,9 +230,6 @@ Metti in grassetto (usando **testo**) le metriche e i dati più importanti.
             return None
         
         try:
-            vertexai.init(project=project_id, location=location)
-            model = GenerativeModel(model_name)
-
             if len(query_results_df) > 10:
                 data_sample = query_results_df.sample(min(10, len(query_results_df))).to_string(index=False)
             else:
@@ -254,10 +263,18 @@ Il codice deve:
 
 Restituisci SOLO il codice Python.
 """
-            response = model.generate_content(chart_prompt)
-            
-            if response.candidates and response.candidates[0].content.parts:
-                code_content = response.candidates[0].content.parts[0].text.strip()
+            if not self.openai_client:
+                st.error("Chiave OpenAI mancante.")
+                return None
+            response = self.openai_client.chat.completions.create(
+                model=self.OPENAI_MODEL,
+                messages=[{"role": "user", "content": chart_prompt}],
+                temperature=1,
+                max_completion_tokens=512,
+            )
+
+            if response.choices and response.choices[0].message.content:
+                code_content = response.choices[0].message.content.strip()
                 if code_content.startswith("```python"):
                     code_content = code_content[len("```python"):].strip()
                 if code_content.endswith("```"):
@@ -287,9 +304,9 @@ Restituisci SOLO il codice Python.
         )
         
         gcp_location = st.text_input(
-            "🌍 Location Vertex AI",
+            "🌍 Location GCP",
             value=self.session_state.get('gcp_location', 'europe-west1'),
-            help="Regione per Vertex AI",
+            help="Regione del progetto (es. europe-west1)",
             key="bq_location"
         )
         
@@ -360,9 +377,10 @@ Restituisci SOLO il codice Python.
             Completa la configurazione nella sidebar per iniziare a utilizzare la modalità BigQuery.
             
             ### Cosa ti serve:
-            - **Progetto Google Cloud** con BigQuery e Vertex AI attivati
+            - **Progetto Google Cloud** con BigQuery attivato
             - **Dataset BigQuery** con dati GSC esportati
-            - **Permessi appropriati** per leggere BigQuery e usare Vertex AI
+            - **API key OpenAI**
+            - **Permessi appropriati** per leggere BigQuery
             
             ### Questa modalità ti permette di:
             - 🔍 Query SQL avanzate sui dati storici GSC
@@ -426,7 +444,7 @@ Restituisci SOLO il codice Python.
                 sql_query = self.generate_sql_from_question(
                     self.session_state.selected_project_id, 
                     self.session_state.get('gcp_location', 'europe-west1'), 
-                    self.TARGET_GEMINI_MODEL, 
+                    self.OPENAI_MODEL,
                     user_question_input,
                     self.session_state.table_schema_for_prompt, 
                     ""
@@ -453,7 +471,7 @@ Restituisci SOLO il codice Python.
                         results_summary = self.summarize_results_with_llm(
                             self.session_state.selected_project_id, 
                             self.session_state.get('gcp_location', 'europe-west1'), 
-                            self.TARGET_GEMINI_MODEL, 
+                            self.OPENAI_MODEL,
                             query_results, 
                             user_question_input
                         )
@@ -472,7 +490,7 @@ Restituisci SOLO il codice Python.
                             chart_code = self.generate_chart_code_with_llm(
                                 self.session_state.selected_project_id, 
                                 self.session_state.get('gcp_location', 'europe-west1'), 
-                                self.CHART_GENERATION_MODEL,
+                                self.OPENAI_MODEL,
                                 user_question_input, 
                                 sql_query, 
                                 query_results
