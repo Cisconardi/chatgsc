@@ -140,7 +140,12 @@ def handle_google_oauth_login():
         params = {
             'client_id': st.secrets.get("google_oauth_client_id"),
             'redirect_uri': APP_URL,
-            'scope': 'openid email profile https://www.googleapis.com/auth/webmasters.readonly',
+            'scope': (
+                'openid email profile '
+                'https://www.googleapis.com/auth/webmasters.readonly '
+                'https://www.googleapis.com/auth/bigquery.readonly '
+                'https://www.googleapis.com/auth/cloud-platform.read-only'
+            ),
             'response_type': 'code',
             'access_type': 'offline',
             'prompt': 'consent'
