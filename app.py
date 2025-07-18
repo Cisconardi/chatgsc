@@ -19,9 +19,14 @@ from googleapiclient.discovery import build
 st.set_page_config(layout="wide", page_title="ChatGSC: Conversa con i dati di Google Search Console")
 
 # --- Configurazione Supabase ---
-# Queste dovranno essere configurate con i tuoi valori reali
-SUPABASE_URL = st.secrets["SUPABASE_URL"]
-SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
+# Legge i secrets configurati in Streamlit Cloud con gestione errori
+try:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_ANON_KEY = st.secrets["SUPABASE_ANON_KEY"]
+except KeyError as e:
+    st.error(f"🔑 Configurazione mancante: {e}")
+    st.error("Per favore configura i secrets SUPABASE_URL e SUPABASE_ANON_KEY in Streamlit Cloud.")
+    st.stop()
 
 # Inizializza client Supabase
 @st.cache_resource
