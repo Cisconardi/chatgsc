@@ -8,6 +8,7 @@ import os
 import tempfile
 import json
 import atexit
+import time
 import matplotlib.pyplot as plt
 import requests
 from supabase import create_client, Client
@@ -70,6 +71,8 @@ def handle_oauth_callback():
     
     if 'code' in query_params:
         auth_code = query_params['code']
+        st.info("🔄 Completamento autenticazione in corso...")
+        
         try:
             # Scambia il codice di autorizzazione con i token
             response = supabase.auth.exchange_code_for_session({
@@ -82,19 +85,28 @@ def handle_oauth_callback():
                 st.session_state.access_token = response.session.access_token
                 st.session_state.refresh_token = response.session.refresh_token
                 
-                # Pulisci i parametri dalla URL
+                # Pulisci i parametri dalla URL e il link di auth
                 st.query_params.clear()
+                if hasattr(st.session_state, 'auth_url'):
+                    del st.session_state.auth_url
+                
                 st.success("✅ Login completato con successo!")
+                time.sleep(1)  # Breve pausa per mostrare il messaggio
                 st.rerun()
             else:
                 st.error("❌ Errore durante il completamento del login")
+                st.query_params.clear()
+                
         except Exception as e:
             st.error(f"❌ Errore nel callback OAuth: {e}")
+            st.query_params.clear()
     
     elif 'error' in query_params:
         error_description = query_params.get('error_description', 'Errore sconosciuto')
         st.error(f"❌ Errore di autenticazione: {error_description}")
         st.query_params.clear()
+        if hasattr(st.session_state, 'auth_url'):
+            del st.session_state.auth_url
 
 def handle_oauth_login():
     """Gestisce il login OAuth con Google tramite Supabase"""
@@ -474,12 +486,24 @@ with st.sidebar:
         if st.button("🔑 Accedi con Google", key="login_button", help="Login OAuth con Google"):
             auth_url = handle_oauth_login()
             if auth_url:
-                st.markdown(f"""
-                <script>
-                    window.open('{auth_url}', '_self');
-                </script>
-                """, unsafe_allow_html=True)
-                st.info("🔄 Reindirizzamento in corso...")
+                st.session_state.auth_url = auth_url
+                st.rerun()
+        
+        # Mostra il link di redirect se disponibile
+        if hasattr(st.session_state, 'auth_url') and st.session_state.auth_url:
+            st.markdown("### 🔗 Completa il Login")
+            st.link_button(
+                "🚀 Vai a Google per Autenticarti", 
+                st.session_state.auth_url,
+                help="Clicca per completare l'autenticazione OAuth"
+            )
+            st.info("👆 Clicca il pulsante sopra per completare il login OAuth")
+            
+            # Reset del link dopo un po'
+            if st.button("🔄 Genera Nuovo Link", key="reset_auth_link"):
+                if hasattr(st.session_state, 'auth_url'):
+                    del st.session_state.auth_url
+                st.rerun()
         
         st.markdown("---")
         st.subheader("ℹ️ Come funziona")
